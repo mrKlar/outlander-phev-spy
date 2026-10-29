@@ -109,7 +109,7 @@ Inconnues bloquantes pour la v1, à lever sur le véhicule ou par le choix d'ada
 - Validité des DID communautaires et de leurs échelles sur ce VIN : équation `2201D1` (octet `B` non défini dans les rapports), signification exacte de `220106`, `220178`, `220179`, `22010B`, `22022A`, `22F0D0` — formules absentes des rapports au-delà des étiquettes. Résolution : corrélation charge/décharge étalonnée, jamais d'équation figée avant.
 - Existence d'un DID de capacité/SOH : non trouvé à ce jour. Bloquant pour toute promesse « santé batterie », gérable pour une v1 découverte + SOC/tensions.
 - Tensions de cellules individuelles : seul min/max est évoqué en Gen4 ; une plage par cellule est inconnue. La topologie réelle (nombre de cellules, capteurs de température) n'est pas publiée ; ~95 cellules série est une inférence arithmétique (350 V ÷ ~3,7 V), pas une donnée.
-- Capacité réelle de l'adaptateur qui sera utilisé (29 bits, `ATFCS*`, tampon BLE) : le modèle exact est absent des rapports. Sans adaptateur de référence, aucun silence n'est interprétable.
+- Capacité réelle de l'adaptateur qui sera utilisé (29 bits, `ATFCS*`, tampon BLE) : le propriétaire dispose d'un clone ELM327, variante à identifier par `ATI` à la première connexion (voir section 14). Sans adaptateur de référence, aucun silence n'est interprétable.
 
 Inconnues gérables, dont la méthode de réponse est connue (étapes 1 à 7) :
 
@@ -718,12 +718,16 @@ Pas de foreground service en v1 : usage interactif au premier plan, ce qui évit
 
 L'ordre est contraignant : M1 avant tout branchement véhicule, M3 avant toute promotion de décodeur. Aucun jalon n'ajoute de capacité d'écriture.
 
-## 14. Questions ouvertes pour le propriétaire
+## 14. Questions au propriétaire — réponses reçues le 2026-10-29
 
-Ces deux questions sont les seules dont la réponse ne peut venir ni des rapports ni du véhicule par interrogation logicielle. Chacune a un défaut assumé qui permet de commencer M0/M1 sans attendre.
-
-1. **Modèle exact de l'adaptateur ELM327 qui sera utilisé** (et, le cas échéant, de l'adaptateur de référence STN/OBDLink ou équivalent vLinker à acquérir). En dépendent : la famille d'UUID BLE réelle à prioriser dans la table de couples connus, la crédibilité des `ATFC*`/`ATCRA`/`ATCP`, et l'interprétabilité de tout silence. Défaut assumé en attendant : table de couples complète + repli générique notify+write après `discoverServices()`, Classic traité en priorité, et aucun silence interprété avant répétition sur l'adaptateur de référence.
-2. **Modèle de téléphone et version d'Android visés.** En dépendent : la confirmation de `minSdk 31` et de l'unique branche de permissions (`BLUETOOTH_SCAN` avec `neverForLocation` + `BLUETOOTH_CONNECT`), ou le retour à `minSdk 26` avec la branche `ACCESS_FINE_LOCATION` pour API ≤ 30. Défaut assumé en attendant : `minSdk 31`, téléphone personnel récent.
+1. **Adaptateur : clone ELM327** (variante et firmware inconnus ; BLE ou Classic à déterminer). Conséquences :
+   - Le développement reste inchangé : le cœur est prouvé sur émulateur et par rejeu, sans dépendre de l'adaptateur (M1 ne le requiert pas).
+   - À la première connexion, `ATI`/`STI` et la matrice de capacités identifieront la variante (`STI` répondra `?` : ce n'est pas un STN) et borneront les phases exécutables (`ATCP`/`ATSP7` pour le 29 bits, `ATFC*` pour le flow control manuel, taille de tampon).
+   - Règle d'interprétation durcie : tout silence (`NO DATA`) obtenu avec ce clone est **non concluant** par défaut. Aucune conclusion « le véhicule ne répond pas / la gateway bloque » ne sera tirée d'une session clone seul.
+   - Avant le jalon M3 (première session véhicule interprétable), l'acquisition d'un adaptateur de référence est recommandée : puce STN ou équivalent vLinker (voir F8, section 3.1), Classic de préférence pour le banc de validation. Cet achat n'est requis ni pour M0/M1, ni pour l'OBD légiféré, ni pour la matrice de capacités du clone.
+   - Le clone peut néanmoins suffire si sa matrice est propre : on le saura à `ATI`, avant tout essai véhicule.
+   - La famille d'UUID BLE réelle, si le clone est un BLE, reste à relever à la première connexion ; table de couples complète + repli générique notify+write après `discoverServices()` en attendant.
+2. **Téléphone : Pixel 8 Pro.** Android 14 d'origine, donc ≥ 14 à ce jour : `minSdk 31` (Android 12) est confirmé avec marge, l'unique branche de permissions (`BLUETOOTH_SCAN` avec `neverForLocation` + `BLUETOOTH_CONNECT`) suffit, aucun retour à `minSdk 26` n'est envisagé. La version exacte d'Android de l'appareil sera relevée à la première installation (`adb shell getprop ro.build.version.release`) et consignée sans conséquence sur le design.
 
 Toute autre inconnue du projet relève du plan de résolution déjà écrit : matrice de capacités (adaptateur), étapes 1 à 7 (adressage, gateway, DID), corrélation tableau de bord (échelles), balayage borné (cartographie), section 3.3 (report hors v1 assumé).
 
