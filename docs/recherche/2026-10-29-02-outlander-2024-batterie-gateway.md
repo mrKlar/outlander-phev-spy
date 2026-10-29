@@ -1,0 +1,110 @@
+# Rapport — Mitsubishi Outlander PHEV 2023-2025 (4e gén., GN/ZM) : batterie et diagnostic OBD
+
+Recherche web uniquement. Chaque affirmation est sourcée. Les mentions **[FAIT]** et **[INFÉRENCE]** distinguent ce qui est publié de ce qui est déduit. Aucun PID n'est inventé : les seuls DID cités viennent d'un retour terrain public unique, signalé comme tel.
+
+---
+
+## (a) Fiche batterie et chaîne de traction
+
+**Capacité et tension**
+
+- **[FAIT]** Batterie lithium-ion de **20 kWh (brut/gross)** sur les millésimes 2023-2024, contre 13,8 kWh pour l'ancienne génération, annoncée dès le lancement d'octobre 2021 [lancement Outlander PHEV 20 kWh, InsideEVs](https://insideevs.com/news/543899/mitsubishi-outlander-phev-new-20kwh/) et confirmée dans les fiches commerciales 2024 : « Hybrid traction battery gross capacity (kWh): 20 » [fiche VIN 2024, concessionnaire Mitsubishi](https://www.sportdurstmitsubishi.com/new/Mitsubishi/2024-Mitsubishi-Outlander+PHEV-f14356730a0e0a903382d835a8c23f98.htm).
+- **[FAIT]** Tension de pack annoncée à **350 V** [fiche VIN 2024, concessionnaire Mitsubishi](https://www.sportdurstmitsubishi.com/new/Mitsubishi/2024-Mitsubishi-Outlander+PHEV-f14356730a0e0a903382d835a8c23f98.htm), corroborée par la presse australienne : « Battery pack: 350V, 20kWh lithium-ion » [essai Outlander PHEV 2023, CarExpert](https://www.carexpert.com.au/car-reviews/2023-mitsubishi-outlander-phev-exceed-tourer-review).
+- **[FAIT]** Capacité en ampères-heures de **57,1 Ah** dans les fiches australiennes MY24 (cohérent avec 20 kWh ÷ 350 V) [annonce MY24 20,0 kWh / 57,1 Ah](https://www.midlandmitsubishi.com.au/stock/details/666056-3022514/2024-mitsubishi-outlander-demo).
+- **[INFÉRENCE, confiance faible]** Capacité *utilisable* : Mitsubishi ne la publie pas dans les sources trouvées. Un site secondaire estime 16-17 kWh utilisables (3-4 kWh réservés) : « The car locks away about 3-4 kWh… leaving you with roughly 16-17 kWh of usable capacity » [estimation non officielle](https://evenergyhub.com/2023-mitsubishi-outlander-phev-ev-range/). À traiter comme estimation, pas comme donnée constructeur.
+- **[FAIT]** Attention au restylage : l'Europe et le Japon reçoivent une batterie de **22,7 kWh dès l'année-modèle 2025**, tandis que l'Amérique du Nord conserve 20 kWh [mise à jour 22,7 kWh Europe, InsideEVs](https://insideevs.com/news/735941/mitsubishi-outlander-phev-bigger-battery/) [confirmation que le 2025 US reste à 20 kWh](https://insideevs.com/news/751243/2025-mitsubishi-outlander-phev-battery/). Le véhicule cible 2024 nord-américain est donc en 20 kWh.
+
+**Cellules, modules, fournisseur : pas publié pour la 4e gén.**
+
+- **[FAIT]** Pour l'ancienne génération, les cellules venaient de Lithium Energy Japan, coentreprise de Mitsubishi et GS Yuasa [fournisseur historique GS Yuasa / Lithium Energy Japan](https://www.automotiveworld.com/articles/fires-stall-mitsubishis-ev-push/), en modules LEV46 de 8 cellules, 10 modules par pack sur les modèles 2018+ [module LEV46 ancien modèle](https://zoomev.uk/products/mitsubishi-outlander-phev-1-32kwh-ev-battery-module).
+- **[FAIT]** Aucune source fiable trouvée ne publie le nombre de cellules/modules ni le fournisseur de la batterie 20 kWh de 4e gén. Un site d'agrégation commerciale mentionne « Yuasa LEV65 » pour 2023-2024 sans aucune corroboration [mention non corroborée](https://www.accio.com/plp/outlander-phev-battery) : **à ne pas utiliser**.
+- **[INFÉRENCE]** 350 V nominaux suggèrent une architecture série de l'ordre de ~95 cellules (à ~3,7 V nominaux), mais c'est un calcul, pas une donnée. À découvrir sur véhicule (voir section d).
+
+**Architecture et charge**
+
+- **[FAIT]** Toujours un schéma **twin-motor 4WD avec S-AWC évolué** : un moteur avant de 85 kW et un moteur arrière de 100 kW (contre 60/70 kW auparavant), sortie système de 185 kW / 450 Nm avec le 2,4 L essence [sorties moteurs 85/100 kW, CarExpert](https://www.carexpert.com.au/car-reviews/2023-mitsubishi-outlander-phev-exceed-tourer-review). Mitsubishi présentait dès 2021 le « twin-motor 4WD » et le S-AWC évolué dans son communiqué officiel [communiqué MMC S-AWC du 1er octobre 2021](https://www.mitsubishi-motors.com/en/newsroom/newsrelease/2021/20211001_1.html).
+- **[FAIT]** Autonomie électrique EPA de 38 miles et capacité de 20 kWh sur le 2023 américain [aperçu 2023, J.D. Power](https://www.jdpower.com/cars/new-car-previews/2023-mitsubishi-outlander-phev-preview).
+- **[FAIT]** **CHAdeMO toujours présent**, y compris en 2024 : « Hybrid traction battery DC charging connector type: CHAdeMO » [fiche VIN 2024](https://www.sportdurstmitsubishi.com/new/Mitsubishi/2024-Mitsubishi-Outlander+PHEV-f14356730a0e0a903382d835a8c23f98.htm). Le manuel 2024 décrit la charge rapide DC CHAdeMO à ~80 % en environ 38 minutes et la charge AC SAE J1772 [manuel du propriétaire 2024](https://ownersmanuals2.com/mitsubishi/outlander-phev-2024-owners-manual-102461). En Europe, Type 2 + CHAdeMO ; aux États-Unis, J1772 + CHAdeMO, une prise de chaque côté [ports EU vs US, InsideEVs](https://insideevs.com/news/735941/mitsubishi-outlander-phev-bigger-battery/).
+- **[FAIT]** Chargeur embarqué AC de 3,7 kW sur la fiche 2024 américaine [fiche VIN 2024](https://www.sportdurstmitsubishi.com/new/Mitsubishi/2024-Mitsubishi-Outlander+PHEV-f14356730a0e0a903382d835a8c23f98.htm).
+
+## (b) Verdict : protocole Nissan ou Mitsubishi ?
+
+### Verdict résumé
+
+**Hybride Alliance, ni « ancien MUT » ni « Consult/Leaf » — confiance moyenne-élevée (~70 %).**
+
+Le modèle mental le plus compatible avec les preuves : **électronique de caisse, BCM, clé, passerelle et plateforme = Nissan ; supervision du système PHEV et de la batterie = lignée Mitsubishi, mais ré-exposée en UDS standard (service 0x22) sur CAN 29 bits derrière une passerelle centrale.** L'ancien accès 11 bits avec trafic CAN en diffusion libre, sur lequel reposaient PHEV Watchdog et EvBatMon, a disparu de la prise OBD.
+
+### Preuves côté Nissan / plateforme
+
+- **[FAIT]** La 4e génération repose sur la plateforme CMF-CD de l'Alliance, partagée avec le Nissan Rogue/X-Trail T33 [plateforme CMF-CD partagée avec le Rogue](https://carbuzz.com/cars/mitsubishi/outlander/2022/).
+- **[FAIT]** La version essence utilise le moteur Nissan **PR25DD** 2,5 L partagé avec le Rogue [moteur PR25DD partagé](https://en.wikipedia.org/wiki/Mitsubishi_Outlander_P-HEV) et une CVT Jatco également partagée [groupe motopropulseur Alliance, SAE](https://www.mobilityengineeringtech.com/component/content/article/44750-sae-ma-06681?catid=1654&Itemid=2211).
+- **[FAIT, preuve forte]** Le câble de contournement de passerelle sécurisée Renault/Nissan (connexion directe au BCM, connecteurs 40 broches) liste explicitement le **Mitsubishi Outlander 2022** aux côtés du Rogue 2021-2022, de la Sentra 2020 et du Pathfinder 2022 [câble bypass SGW listant l'Outlander 2022](https://keyinnovations.com/advanced-diagnotstics-adc2017-nissan-bypass-cable/?refSrc=65997&nosto=nosto-page-product1). Même liste chez un second vendeur : Rogue 2021-22, Sentra 2020-22, Pathfinder 2022, Outlander 2022 [câble bypass Renault/Nissan/Mitsubishi, DiagProg](https://shop.diagprog.com/product-eng-837-Renault-Nissan-bypass-cable.html).
+- **[INFÉRENCE]** Que le même câble BCM serve sur Rogue et Outlander implique BCM, antidémarrage/clé de proximité et passerelle d'origine Nissan sur l'Outlander de 4e gén.
+
+### Preuves côté Mitsubishi / système PHEV
+
+- **[FAIT]** Le système PHEV reste un développement Mitsubishi : communiqué officiel sur le S-AWC évolué et le twin-motor 4WD [communiqué MMC](https://www.mitsubishi-motors.com/en/newsroom/newsrelease/2021/20211001_1.html), avec « complètement remanié les composants PHEV » au lancement [lancement relaté par InsideEVs](https://insideevs.com/news/543899/mitsubishi-outlander-phev-new-20kwh/).
+- **[FAIT]** L'outil constructeur reste **MUT-III SE** côté logiciel Mitsubishi (versions 2022/2023 discutées avec interfaces J2534) [utilisation MUT-III avec J2534](http://blog.obdii365.com/2024/05/03/how-to-use-godiag-j2534-with-mitsubishi-mut-iii/), mais l'interface physique a convergé : les VCI « RNM » (Renault-Nissan-Mitsubishi, base Bosch RNM-VI) font tourner CONSULT-III Plus Nissan, CLIP Renault **et** MUT-III [interface RNM 3-en-1](https://www.otoideal.com/en/vnci-rnm-renault-diagnostic-tool-adt-online). Convergence du matériel d'atelier, pas fusion des protocoles applicatifs.
+
+### Preuves terrain : ce que voit un ELM327 sur un 2023
+
+Source centrale : un fil public GitHub (juillet 2025 à avril 2026) d'un propriétaire d'Outlander PHEV 2023 avec adaptateur WiCAN (compatible ELM327) et Car Scanner [fil « No CAN data 2023 Outlander PHEV », WiCAN](https://github.com/meatpiHQ/wican-fw/issues/468).
+
+- **[FAIT rapporté]** « I can get basic PID data with CarScanner [ISO 15765-4 CAN (29 bit ID, 500 Kbaud)] » : l'OBD-II générique fonctionne, en **29 bits** [fil WiCAN 468](https://github.com/meatpiHQ/wican-fw/issues/468).
+- **[FAIT rapporté]** `ATMA` (monitor all) ne produit **aucune sortie**, aucun trafic en candump/slcan ; le mainteneur WiCAN conclut que le véhicule ne diffuse pas de CAN sur la prise, seul le protocole OBD2 en requête/réponse est supporté [fil WiCAN 468](https://github.com/meatpiHQ/wican-fw/issues/468).
+- **[FAIT rapporté]** L'en-tête fonctionnel utilisé par Car Scanner est `18DB33F1` et l'auteur filtre les réponses du BMU avec `ATCRA18DAF1DB` [fil WiCAN 468](https://github.com/meatpiHQ/wican-fw/issues/468). C'est le schéma générique ISO 15765 en 29 bits : fonctionnel `18DB33F1`, requêtes physiques `18DAxxF1`, réponses `18DAF1xx` où `xx` est l'adresse logique de l'ECU répondant [schéma d'adressage OBD 29 bits](https://scithings.id.au/OBD_PID.pdf).
+- **[FAIT rapporté, source unique]** Après exploration manuelle des services 0x21/0x22, l'auteur publie en octobre 2025 un profil Car Scanner/WiCAN « Gen4 » fondé sur `ATSP7` (ISO 15765-4 CAN 29 bits) et des requêtes **UDS 0x22** : `2201D1` pour le SoC (équation empirique `B*0.64-19.2`), `220106` pour la tension HV, `220178`/`220179` pour les tensions cellule max/min, `2201D0` pour ce qu'il appelle `SOC_MAX`, réponses filtrées sur `18DAF1DB` (BMU selon lui), `18DAF1DE` et `18DAF1E5` pour d'autres ECU [profil Gen4 publié dans le fil WiCAN](https://github.com/meatpiHQ/wican-fw/issues/468). **Avertissements de l'auteur lui-même** : « I really have no idea what I'm doing, so take everything with a grain of salt » et « I could not find SOH » [fil WiCAN 468](https://github.com/meatpiHQ/wican-fw/issues/468). Un second propriétaire confirme seulement que le JSON « seems to work well » [fil WiCAN 468](https://github.com/meatpiHQ/wican-fw/issues/468). Ces DID sont donc des **pistes à revalider sur véhicule**, pas une cartographie établie.
+- **[FAIT rapporté]** Avant ce travail, le SoC n'était pas disponible dans Car Scanner et, selon l'auteur, personne ne l'avait trouvé depuis la sortie des modèles 2023 [fil WiCAN 468](https://github.com/meatpiHQ/wican-fw/issues/468).
+
+### Ce que ce n'est *pas*
+
+- **[FAIT]** Ce n'est pas le protocole de la Nissan Leaf : le LBC (contrôleur batterie Leaf) se requête en 11 bits sur `79B`, réponses sur `7BB`, service 0x21 par groupes — c'est la base de LeafSpy [requêtes LBC 79B/7BB](https://mynissanleaf.com/posts/586181/). Rien dans les rapports Outlander 2023+ ne reproduit ce schéma.
+- **[FAIT]** Ce n'est plus le schéma Mitsubishi VE historique : sur la famille i-MiEV/PHEV ancienne, il fallait parler directement à l'ECU en 11 bits (ex. `0x761` pour le BMU, discuté sur le forum i-MiEV) [adressage direct 11 bits famille Mitsubishi VE](https://myimiev.com/threads/can-buss-mut-and-sae-j2534-pass-through-programming-of-ecus.5244/page-2). Rien n'indique que ces adresses répondent encore sur la 4e gén.
+- **[FAIT]** PHEV Watchdog, construit pour l'ancien schéma, liste officiellement l'Outlander PHEV « jusqu'à 2021 » seulement [page Google Play PHEV Watchdog Lite](https://play.google.com/store/apps/details?id=phev.watchdog&hl=en_NZ) et son site dit la même chose [site PHEV Watchdog](http://phevwatchdog.net/).
+
+**Adresses CAN probables à ce stade (à valider)** : testeur `F1` ; fonctionnel 29 bits `18DB33F1` ; réponses observées `18DAF1DB` (BMU présumé, adresse logique `0xDB`), `18DAF1DE`, `18DAF1E5`. Aucune adresse 11 bits de BMU de 4e gén. n'est publiée dans les sources trouvées.
+
+## (c) Risque Secure Gateway : impact concret sur une app ELM327 lecture seule
+
+### Faits établis
+
+- **[FAIT]** Nissan a déployé une **Central Gateway** sécurisée sur Sentra 2020+, Rogue 2021+ et Pathfinder 2022+ ; Autel a obtenu un accès approuvé via AutoAuth en 2024 [accès Autel à la Central Gateway Nissan](https://www.bodyshopbusiness.com/autel-approved-for-nissan-central-gateway-access/).
+- **[FAIT]** L'Outlander 2022+ partage l'architecture BCM/passerelle de ces Nissan, au point de figurer sur le même câble de contournement de « secure gateway module » branché sur le BCM [câble bypass listant l'Outlander 2022](https://keyinnovations.com/advanced-diagnotstics-adc2017-nissan-bypass-cable/?refSrc=65997&nosto=nosto-page-product1).
+- **[FAIT]** Aucune source publique trouvée ne décrit un programme « SGW Mitsubishi » ni un AutoAuth Mitsubishi équivalent au dispositif FCA/Nissan. À titre de comparaison, la SGW FCA bloque l'effacement de codes et le bidirectionnel sans authentification, pas la simple lecture d'usage courant [explication SGW FCA](https://www.xtoolglobal.com/cs/blogs/zpravy/fca-secure-gateway-cs). C'est une analogie, pas une preuve pour Mitsubishi.
+- **[FAIT rapporté, le plus important]** Sur un Outlander PHEV 2023, un outil générique (WiCAN/ELM327 + Car Scanner) a obtenu en 2025 les PID OBD-II de base **et** des lectures UDS 0x22 du BMU, sans mention d'authentification, de câble bypass ni de compte constructeur [fil WiCAN 468](https://github.com/meatpiHQ/wican-fw/issues/468).
+
+### Évaluation du risque pour le projet
+
+- **Mode 01 / Mode 09 (OBD-II légiféré)** : risque **faible**. Fonctionnement confirmé par le retour terrain 2023 ci-dessus (PID de base via Car Scanner) [fil WiCAN 468](https://github.com/meatpiHQ/wican-fw/issues/468). C'est le socle obligatoire antipollution ; aucun indice de blocage.
+- **UDS 0x22 ReadDataByIdentifier en lecture seule** : risque **faible à moyen**. Preuve positive sur un véhicule 2023 (DID batterie répondant derrière `18DAF1DB`) [fil WiCAN 468](https://github.com/meatpiHQ/wican-fw/issues/468). Réserves : un seul véhicule/marché documenté, sous-ensemble de DID inconnu, possibilité que certains DID exigent une session étendue (0x10) ou renvoient des NRC — l'auteur mentionne d'ailleurs des réponses négatives à filtrer lors du polling fonctionnel [fil WiCAN 468](https://github.com/meatpiHQ/wican-fw/issues/468).
+- **Écoute passive du bus (broadcast)** : risque **élevé / voie morte probable**. `ATMA` vide et aucun trafic en candump sur la prise [fil WiCAN 468](https://github.com/meatpiHQ/wican-fw/issues/468). Conséquence directe : pas de « LeafSpy passif », tout doit passer par requête/réponse derrière la passerelle.
+- **Écritures** (effacement DTC 0x14, routines 0x31, programmation de clés) : risque **élevé** de blocage, par analogie avec la passerelle Nissan et l'existence même d'un câble bypass BCM pour les clés [câble bypass BCM](https://slk-hardware.com/es/products/bypass-cable-for-renault-nissan-mitsubishi-compatible-with-smart-pro-duplicate-proximity-keys). Hors périmètre d'une app lecture seule, mais à exclure du design.
+- **Contrainte matérielle [INFÉRENCE]** : l'app devra exiger un adaptateur gérant proprement le 29 bits, les en-têtes longs (`ATSH`/`ATCRA` 29 bits), l'ISO-TP multi-trame et le contrôle de flux — le profil WiCAN repose sur `ATSP7` + filtres `ATCRA18DAF1xx` [profil Gen4 du fil WiCAN](https://github.com/meatpiHQ/wican-fw/issues/468). Les clones ELM327 bas de gamme sont un risque connu sur ce type d'adressage ; prévoir OBDLink/STN ou équivalent comme matériel de référence.
+- **Veille et 12 V [FAIT rapporté]** : des propriétaires 2023 signalent dans le même fil des problèmes de batterie 12 V associés à un adaptateur WiCAN laissé branché qui gênait la mise en sommeil [fil WiCAN 468](https://github.com/meatpiHQ/wican-fw/issues/468). Le polling véhicule éteint/en charge devra être cadré.
+
+**Conclusion SGW** : la passerelle existe vraisemblablement (architecture Nissan prouvée pour le BCM/clés), mais **rien n'indique qu'elle bloque la lecture** Mode 01/09 ni le 0x22 de base ; elle supprime en revanche le broadcast et verrouille vraisemblablement l'écriture. Pour une app lecture seule, le risque bloquant est donc jugé **faible**, sous réserve de validation sur le véhicule cible précis (marché/année).
+
+## État des apps existantes 2023+
+
+- **[FAIT]** PHEV Watchdog : support officiel limité à l'Outlander PHEV « up to 2021 » [Google Play](https://play.google.com/store/apps/details?id=phev.watchdog&hl=en_NZ). Retours propriétaires convergents : un propriétaire de 2024 écrit sa déception que Watchdog ne fonctionne plus sur 2023-2024 [forum myoutlanderphev, fil charge 80 %](https://www.myoutlanderphev.com/threads/change-to-100-or-80.6855/post-67216) ; un avis d'app rapporte qu'un 2023 se connecte en OBD2 mais que Watchdog « does not recognize vehicle or show any of the available data » [avis utilisateurs Watchdog](https://apk.support/app/phev.watchdog) ; le forum note explicitement que l'app ne fonctionne pas avec la génération actuelle [forum myoutlanderphev, kilométrage](https://www.myoutlanderphev.com/posts/66637/) et que, sans Watchdog, l'état de charge batterie 2023+ est difficile à déterminer [forum, préoccupations batterie](https://www.myoutlanderphev.com/threads/battery-concerns-in-the-outlander-phev.6871/post-68679).
+- **[FAIT]** Car Scanner : fonctionne en OBD générique sur 2023, mais **sans SoC batterie dans le profil stock** en juillet 2025 selon le retour WiCAN ; seul un profil personnalisé communautaire (octobre 2025, source unique) ajoute les DID 0x22 [fil WiCAN 468](https://github.com/meatpiHQ/wican-fw/issues/468).
+- **[FAIT]** Outils pro multimarques : Autel a ajouté dès 2023 des « basic functions » et une fonction de topologie pour l'Outlander 2023 [notes de mise à jour Autel 2023](https://au.autel.com/u/cms/www/202303/0707313267pj.pdf). C'est du diagnostic d'atelier, pas une base PID ELM327 publique.
+- **Torque, OBDLink (app), EvNotify, EvBatMon** : aucune source trouvée documentant un support ou des PID batterie spécifiques à l'Outlander PHEV 2023+. Absence de preuve notable après recherche ciblée ; à considérer comme **non supportés en données PHEV** à ce jour (générique Mode 01 seulement, et encore non documenté spécifiquement pour Torque).
+
+## (d) Ce qu'il faudra découvrir nous-mêmes sur le véhicule
+
+Liste explicite d'inconnues, par ordre de dépendance :
+
+1. **Recensement d'accès** : l'OBD répond-il aussi en 11 bits (fonctionnel `7DF`) ou uniquement en 29 bits (`18DB33F1`) ? Quelles ECU répondent au `0100` fonctionnel (combien d'adresses `18DAF1xx`) ? Mode 09 (VIN, calibration) complet ?
+2. **Confirmation des adresses** : `0xDB` est-il bien le BMU ? Que sont `0xDE` et `0xE5` (chargeur ? PHEV-ECU ? convertisseur ?) ? Lecture des identifiants UDS standards (VIN, références pièce/logiciel) par ECU pour les nommer sans deviner.
+3. **Politique de passerelle** : le 0x22 répond-il en session par défaut pour toutes les ECU, ou certaines exigent-elles 0x10 session étendue ? Quels NRC (0x7F … 0x31 requête hors plage, 0x33 accès sécurité refusé, 0x78 réponse en attente) apparaissent, et sur quels services (0x19 lecture DTC en particulier) ?
+4. **Revalidation des DID communautaires** : `01D1`, `01D0`, `0106`, `0178`, `0179`, `010B`, `022A`, `F0D0` et leurs équations empiriques [profil WiCAN à revalider](https://github.com/meatpiHQ/wican-fw/issues/468) — à confronter à l'affichage tableau de bord sur une charge/décharge complète étalonnée, octet par octet. Ne rien figer dans l'app avant cette corrélation.
+5. **SoH / capacité résiduelle** : existe-t-il un DID de capacité actuelle (Ah ou kWh) équivalent à l'ancien « Battery Current Capacity » ? L'explorateur de 2025 ne l'a pas trouvé [fil WiCAN 468](https://github.com/meatpiHQ/wican-fw/issues/468). Son hypothèse `SOC_MAX` comme proxy de dégradation est une interprétation, non validée contre un rapport MUT concessionnaire.
+6. **Topologie batterie réelle** : nombre de cellules et de capteurs de température exposés (plages de DID de tensions individuelles ? seul min/max ?), tension de pack à 0 %/100 % affichés, fenêtre SoC réel vs affiché.
+7. **Contextes de réponse** : quels DID répondent véhicule en READY, en charge AC, en charge CHAdeMO, contact coupé ? Délai d'endormissement de la passerelle et effet du polling sur la batterie 12 V (plaintes déjà rapportées) [fil WiCAN 468](https://github.com/meatpiHQ/wican-fw/issues/468).
+8. **Débit et cadence sûrs** : taux de polling supporté en adressage physique vs fonctionnel sans réponses négatives ni réveil intempestif ; gestion ISO-TP multi-trame sur les DID longs avec l'adaptateur de référence choisi.
+9. **Variantes** : écarts NA 20 kWh vs Europe/Japon 22,7 kWh (2025+) [batterie EU 22,7 kWh](https://insideevs.com/news/735941/mitsubishi-outlander-phev-bigger-battery/) — mêmes DID, échelles différentes ? À tester si l'app vise plus que le marché nord-américain.
+10. **Fournisseur et chimie des cellules 20 kWh** : toujours non publiés ; seule une lecture d'étiquette de pack, une documentation d'atelier GN ou un démontage permettra de trancher.
+
+**En une phrase** : le projet est faisable en lecture seule (OBD légiféré + UDS 0x22 démontrés sur un 2023), mais il part d'une feuille presque blanche côté cartographie batterie — un seul profil communautaire non validé existe — et devra être construit en 29 bits derrière passerelle, sans aucun héritage de code ni de PID de l'ancienne génération.

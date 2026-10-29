@@ -1,0 +1,30 @@
+# Gradle
+.gradle/
+build/
+out/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Android
+local.properties
+*.iml
+.idea/
+.cxx/
+.externalNativeBuild/
+captures/
+
+# APK / bundles générés
+*.apk
+*.aab
+
+# Keystores — jamais committés (sauvegarder ~/.android/debug.keystore hors machine)
+*.jks
+*.keystore
+.android/
+
+# Journaux et captures de session véhicule (contiennent le VIN réel)
+# Fixtures de test anonymisées : ajout volontaire en force (git add -f) après relecture, jamais d'exception ici.
+*.jsonl
+
+# OS / éditeurs
+.DS_Store
+*.swp
