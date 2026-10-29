@@ -135,3 +135,113 @@ scripts/run-emulator-it.sh   # démarre l'émulateur TCP :35000, tests, arrête
 
 Détails, piège stdin/EOF et comportement observé (`0100` → POSITIVE) :
 [scripts/elm-emulator/README.md](../scripts/elm-emulator/README.md).
+
+## Fin M0 — APK squelette (tâche 9)
+
+Réalisé le 2026-10-29. Modules ajoutés : `:transport-android`
+(librairie Android, ancrage `TransportAndroid`, vrais transports BLE +
+Bluetooth Classic en M2) et `:app` (Compose, écran statique M0 qui
+affiche les compteurs calculés depuis `KnownSignals` de `:protocol` :
+8 DID Gen4 communautaires non validés, 4 décodeurs anciens oracle).
+
+### Versions réellement utilisées
+
+| Composant | Version | Remarque |
+|---|---|---|
+| AGP | **9.4.1** (catalogue, inchangé) | Aucun repli : le scaffold AGP 9 a réussi dès la première tentative (pas de plugin `kotlin.android` séparé, plugin Compose seul ; Kotlin intégré à AGP 9 compile aussi `:transport-android`). |
+| Kotlin / plugin Compose | 2.4.21 | Inchangé. |
+| Compose BOM | 2026.09.00 | Inchangé ; `ui`, `ui-graphics`, `material3`, `ui-tooling-preview` (debug seulement) sans version directe, via le BOM. |
+| `androidx.activity:activity-compose` | **1.13.0** | Relevé le 2026-10-29 sur `https://dl.google.com/dl/android/maven2/androidx/activity/activity-compose/maven-metadata.xml` : `latest`/`release` = `1.14.0-alpha03` (alpha), dernière **stable** = **1.13.0**. Ajoutée au catalogue (`androidx-activity`). |
+| SDK | compileSdk 37, targetSdk 36, minSdk 31 | AGP a auto-installé `build-tools;36.0.0` (sa version par défaut) dans `.toolchain/android-sdk/` au premier build ; les vérifications `aapt2` ci-dessous utilisent les build-tools 37.0.0 déjà installés. |
+| `local.properties` | aucun | `ANDROID_HOME` de `scripts/dev-env.sh` a suffi ; aucun fichier créé. |
+
+### Vérifications (ordre d'`AGENTS.md`, sorties réelles)
+
+```
+$ ./gradlew :protocol:test
+BUILD SUCCESSFUL in 8s        (124 tests au rapport : 0 échec, 0 erreur,
+                               1 ignoré = EmulatorIntegrationTest, émulateur
+                               non configuré — comportement attendu hors
+                               scripts/run-emulator-it.sh)
+
+$ ./gradlew :app:assembleDebug
+BUILD SUCCESSFUL in 32s
+56 actionable tasks: 54 executed, 2 up-to-date
+```
+
+### APK produit
+
+```
+$ ls -lh app/build/outputs/apk/debug/app-debug.apk
+-rw-r--r-- 1 n n 29M Oct 29 14:42 app/build/outputs/apk/debug/app-debug.apk
+  (taille exacte : 29 668 149 octets)
+
+$ sha256sum app/build/outputs/apk/debug/app-debug.apk
+5a2ef08f2b66fe80922eb266fff4de8fee8a6f4487caeadca6cdfc670fef9d33  app/build/outputs/apk/debug/app-debug.apk
+```
+
+Badging résumé (`aapt2 dump badging`, build-tools 37.0.0) :
+
+```
+package: name='ca.mrklar.outlander.phevspy' versionCode='1' versionName='0.1.0-m0' platformBuildVersionName='17' platformBuildVersionCode='37' compileSdkVersion='37' compileSdkVersionCodename='17'
+minSdkVersion:'31'
+targetSdkVersion:'36'
+uses-permission: name='android.permission.BLUETOOTH_SCAN' usesPermissionFlags='neverForLocation'
+uses-permission: name='android.permission.BLUETOOTH_CONNECT'
+application-label:'Outlander PHEV Spy'
+```
+
+`aapt2 dump permissions` confirme les deux permissions Bluetooth ci-dessus
+(déclarées seulement, jamais demandées à l'exécution en M0), plus la
+permission interne `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` ajoutée par
+AndroidX. `apksigner verify` : `Verifies` (schéma v2, 1 signataire).
+
+### Keystore de debug
+
+Emplacement **réellement** utilisé par AGP 9 (généré au premier build) :
+
+```
+.toolchain/android-user-home/debug.keystore   (2 618 octets, alias androiddebugkey)
+SHA256 du certificat : 9C:7B:7E:BF:DE:39:DB:93:FA:2A:D1:50:97:86:CE:B7:AD:9D:41:92:7A:B8:AB:2D:40:46:EA:C0:02:75:94:FD
+```
+
+Remarque : AGP 9 le place directement sous `$ANDROID_USER_HOME`, pas dans
+un sous-dossier `.android/` (qui n'existe pas dans
+`.toolchain/android-user-home/`). Le fichier est hors git :
+`git check-ignore -v` répond `.gitignore:2:/.toolchain/` et `git status`
+ne le montre pas. Si ce fichier est perdu, Android refusera de mettre à
+jour l'app installée (signature différente) : il faudra désinstaller puis
+réinstaller.
+
+- [ ] Sauvegarder `/home/n/code/outlander-phev-spy/.toolchain/android-user-home/debug.keystore` hors de cette machine (action propriétaire)
+
+### Sideload sur le Pixel 8 Pro (à faire avec le propriétaire)
+
+**L'installation réelle n'a PAS été faite ici** : aucun appareil n'était
+branché (`adb devices` → liste vide). Procédure à suivre :
+
+Par `adb` (recommandé) :
+
+1. Sur le Pixel : Paramètres → À propos du téléphone → taper 7 fois sur
+   « Numéro de build » pour activer les options pour les développeurs.
+2. Paramètres → Système → Options pour les développeurs → activer
+   « Débogage USB » (ou « Débogage sans fil » puis appairer le téléphone).
+3. Brancher le câble USB, accepter l'empreinte RSA sur le téléphone,
+   vérifier `adb devices` (l'appareil doit apparaître, état `device`).
+4. Depuis la racine du dépôt :
+
+   ```bash
+   source scripts/dev-env.sh
+   adb install -r app/build/outputs/apk/debug/app-debug.apk
+   ```
+
+Alternative sans câble : transférer `app-debug.apk` sur le téléphone
+(USB en transfert de fichiers, courriel, Syncthing…), l'ouvrir avec
+l'explorateur de fichiers et autoriser l'installation depuis cette source
+quand Android le demande.
+
+Au lancement, l'écran M0 doit afficher « Outlander PHEV Spy »,
+« DID Gen4 en registre: 8 (pistes communautaires non validées) » et
+« Décodeurs anciens (oracle): 4 ». Aucune permission ne sera demandée en
+M0. Rappel : application en lecture seule — ne jamais lancer un scan en
+roulant.

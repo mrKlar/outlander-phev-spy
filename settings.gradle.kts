@@ -14,4 +14,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "outlander-phev-spy"
-include(":protocol")
+include(":protocol", ":transport-android", ":app")
