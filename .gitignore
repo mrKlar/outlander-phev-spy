@@ -1,3 +1,6 @@
+# Toolchain contenue (JDK, Gradle, Android SDK — réinstallable, voir docs/m0-bootstrap.md)
+/.toolchain/
+
 # Gradle
 .gradle/
 build/
