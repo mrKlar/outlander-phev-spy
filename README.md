@@ -21,4 +21,4 @@ Spécification rédigée, aucun code source pour l'instant. Les jalons prévus v
 - [Spécification de design](docs/superpowers/specs/2026-10-29-outlander-phev-spy-design.md) — architecture, liste blanche, protocole d'interrogation, plan de première session véhicule, journal JSONL, jalons.
 - [AGENTS.md](AGENTS.md) — règles pour les agents de codage qui interviennent sur ce dépôt.
 
-Dépôt privé, projet personnel. Documentation et commits en français.
+Dépôt **public**, projet personnel en cours de développement. Aucune licence pour l'instant (droits réservés par défaut) ; le choix d'une licence libre reste à faire. Documentation et commits en français.
