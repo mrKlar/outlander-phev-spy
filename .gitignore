@@ -31,3 +31,6 @@ captures/
 # OS / éditeurs
 .DS_Store
 *.swp
+
+# Journal de l émulateur ELM327 (généré dans le cwd à chaque run de test)
+elm.log

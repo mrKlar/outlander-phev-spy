@@ -109,3 +109,29 @@ telechargements 490 M, android-user-home 3,6 M, gradle-home 120 K).
   calcule en fait des chemins **absolus** depuis son propre emplacement (plus robuste, fonctionne
   quel que soit le répertoire courant), conformément à la consigne du meneur.
 - Licences SDK acceptées (`android-sdk/licenses/`, 8 fichiers) : « All SDK package licenses accepted ».
+
+## Émulateur ELM327 (ajout tâche 8, 2026-10-29)
+
+[ELM327-emulator](https://github.com/Ircama/ELM327-emulator) d'Ircama sert
+d'oracle sans voiture pour `:protocol` (TCP via `TcpElmTransport`).
+
+Licence vérifiée **avant** installation (2026-10-29) :
+**Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International
+(CC BY-NC-SA 4.0)** — fichier `LICENSE` du dépôt
+(https://raw.githubusercontent.com/Ircama/ELM327-emulator/master/LICENSE,
+première ligne « Attribution-NonCommercial-ShareAlike 4.0 International » ;
+l'API GitHub dit `Other / NOASSERTION`, SPDX non détecté). Usage
+strictement local et personnel : installé dans `.toolchain/` (gitignorée),
+jamais commité ni redistribué.
+
+```bash
+export UV_PYTHON_INSTALL_DIR="$PWD/.toolchain/uv-pythons"
+export UV_CACHE_DIR="$PWD/.toolchain/uv-cache"
+uv venv --python 3.12 .toolchain/emu-venv
+uv pip install --python .toolchain/emu-venv/bin/python ELM327-emulator  # v4.0.0
+.toolchain/emu-venv/bin/python -m elm -h
+scripts/run-emulator-it.sh   # démarre l'émulateur TCP :35000, tests, arrête
+```
+
+Détails, piège stdin/EOF et comportement observé (`0100` → POSITIVE) :
+[scripts/elm-emulator/README.md](../scripts/elm-emulator/README.md).
