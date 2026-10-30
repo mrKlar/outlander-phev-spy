@@ -4,6 +4,7 @@ agp = "9.4.1"
 compose-bom = "2026.09.00"
 kotlinx-coroutines = "1.11.0"
 androidx-activity = "1.13.0"
+androidx-lifecycle = "2.11.0"
 kable = "0.45.0"
 
 [libraries]
@@ -16,6 +17,7 @@ androidx-compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graph
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
 kable-core = { group = "com.juul.kable", name = "kable-core", version.ref = "kable" }
+androidx-lifecycle-viewmodel-compose = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "androidx-lifecycle" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
