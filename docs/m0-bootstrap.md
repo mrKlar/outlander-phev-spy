@@ -215,10 +215,15 @@ réinstaller.
 
 - [ ] Sauvegarder `/home/n/code/outlander-phev-spy/.toolchain/android-user-home/debug.keystore` hors de cette machine (action propriétaire)
 
-### Sideload sur le Pixel 8 Pro (à faire avec le propriétaire)
+### Sideload sur le Pixel 8 Pro
 
-**L'installation réelle n'a PAS été faite ici** : aucun appareil n'était
-branché (`adb devices` → liste vide). Procédure à suivre :
+**Installation réelle effectuée le 2026-10-30** : Pixel 8 Pro (Android 17)
+branché en USB au portable Windows `zen`, atteint depuis ControlTower par
+SSH sur Tailscale. Chaîne prouvée de bout en bout : `adb devices` →
+`device product:husky model:Pixel_8_Pro` ; `adb install -r` → `Success` ;
+lancement par `am start` ; capture d'écran vérifiée visuellement
+(« Outlander PHEV Spy », « DID Gen4 en registre: 8 », « Décodeurs anciens
+(oracle): 4 »). Procédure d'origine, pour référence :
 
 Par `adb` (recommandé) :
 
