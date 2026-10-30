@@ -328,7 +328,10 @@ class ElmSession(
             consigner(commande, transact(commande, phase = "init"))
         }
         consigner("ATSP0", transact("ATSP0", phase = "init"))
-        transact("0100", phase = "init", kind = "obd")
+        // La recherche automatique de protocole (ATSP0) d'un clone lent peut
+        // prendre plusieurs secondes (timeout observé sur véhicule réel
+        // 2026-10-30) : budget large, une seule fois à l'init.
+        transact("0100", timeoutMs = 10_000, phase = "init", kind = "obd")
         val repDpn = transact("ATDPN", phase = "init")
 
         return AdapterCapabilities(
