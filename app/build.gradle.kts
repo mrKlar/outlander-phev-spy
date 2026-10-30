@@ -15,6 +15,37 @@ android {
         versionName = "0.1.0-m0"
     }
 
+    signingConfigs {
+        create("release") {
+            val keystorePath = System.getenv("OUTLANDER_UPLOAD_KEYSTORE")
+            val keystorePassword = System.getenv("OUTLANDER_UPLOAD_KEYSTORE_PASSWORD")
+            val uploadKeyAlias = System.getenv("OUTLANDER_UPLOAD_KEY_ALIAS")
+            val uploadKeyPassword = System.getenv("OUTLANDER_UPLOAD_KEY_PASSWORD")
+            if (listOf(keystorePath, keystorePassword, uploadKeyAlias, uploadKeyPassword).all { !it.isNullOrBlank() }) {
+                storeFile = file(keystorePath!!)
+                storePassword = keystorePassword
+                keyAlias = uploadKeyAlias
+                keyPassword = uploadKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            val uploadSigningEnv = listOf(
+                "OUTLANDER_UPLOAD_KEYSTORE",
+                "OUTLANDER_UPLOAD_KEYSTORE_PASSWORD",
+                "OUTLANDER_UPLOAD_KEY_ALIAS",
+                "OUTLANDER_UPLOAD_KEY_PASSWORD",
+            )
+            if (uploadSigningEnv.all { !System.getenv(it).isNullOrBlank() }) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+            isMinifyEnabled = false
+            isShrinkResources = false
+        }
+    }
+
     buildFeatures {
         compose = true
     }
@@ -28,5 +59,5 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(project(":protocol"))
     implementation(project(":transport-android"))
-    debugImplementation(libs.androidx.compose.ui.tooling.preview)
+    implementation(libs.androidx.compose.ui.tooling.preview)
 }

@@ -1,0 +1,7 @@
+# Modèle de liste de testeurs pour la piste de test fermé Google Play.
+# Format : une adresse par ligne, l'adresse du COMPTE GOOGLE réel du testeur.
+# Google Play exige de vrais comptes Google ayant accepté l'invitation (opt-in)
+# via le lien de la piste fermée. N'inscrire aucune adresse inventée :
+# elle ne compterait pas comme testeur et fausserait la liste.
+# Retirer les lignes de commentaire (#) avant tout usage éventuel dans la Console.
+email
