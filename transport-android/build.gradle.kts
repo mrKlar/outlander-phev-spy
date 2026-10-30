@@ -13,4 +13,6 @@ android {
 
 dependencies {
     api(project(":protocol"))
+    implementation(libs.kable.core)
+    implementation(libs.kotlinx.coroutines.core)
 }

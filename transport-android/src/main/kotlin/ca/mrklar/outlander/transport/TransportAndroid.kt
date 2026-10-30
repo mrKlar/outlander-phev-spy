@@ -9,5 +9,5 @@ package ca.mrklar.outlander.transport
  * seulement la liaison `:app` → `:transport-android` → `:protocol`.
  */
 object TransportAndroid {
-    const val ETAT: String = "M2 à venir : BLE + Bluetooth Classic"
+    const val ETAT: String = "transports BLE + Classic implémentés (M2)"
 }
