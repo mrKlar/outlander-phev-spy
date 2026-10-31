@@ -242,13 +242,18 @@ private fun EcranSession(vm: SessionViewModel = viewModel()) {
         Spacer(Modifier.height(16.dp))
         Text("Actions", style = MaterialTheme.typography.titleMedium)
         Button(onClick = { vm.lancerSondesGen4() }, enabled = connecte && !state.scanRunning) {
-            Text("Sondes Gen4")
+            Text("Sondes Gen4 (fonctionnel d'abord)")
         }
         Button(
             onClick = { vm.lancerScan(ready) },
             enabled = connecte && dehors && stationne && ready && !state.scanRunning,
             modifier = Modifier.padding(top = 4.dp),
         ) { Text("Lancer le scan (phases 1-7)") }
+        Button(
+            onClick = { vm.lancerBalayageFonctionnel(cible) },
+            enabled = connecte && dehors && stationne && ready && !state.scanRunning,
+            modifier = Modifier.padding(top = 4.dp),
+        ) { Text("Balayer DID 0100-01FF (fonctionnel, cible choisie)") }
         if (state.scanRunning) {
             Button(onClick = { vm.arreterScan() }, modifier = Modifier.padding(top = 4.dp)) {
                 Text("Arrêter")

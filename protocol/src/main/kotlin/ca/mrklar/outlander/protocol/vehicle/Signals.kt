@@ -77,10 +77,15 @@ object AffineDecoder : SignalDecoder {
 object KnownSignals {
 
     /**
-     * DID Gen4 rapportés par la communauté (spec §8.3), sur
-     * [EcuChannel.BMU_DB]. Aucune équation encodée : les échelles
-     * sont absentes des rapports et, pour `2201D1`, l'octet visé
-     * par l'équation rapportée n'est pas défini.
+     * DID Gen4 du profil communautaire WiCAN #468 (campagne 1) :
+     * un DID = une définition, canal = répondant attendu
+     * ([EcuChannel.BMU_DB], [EcuChannel.ECU_DE],
+     * [EcuChannel.ECU_E5]). Aucune équation encodée : la
+     * sémantique des indices « B » de Car Scanner par rapport à
+     * notre charge après en-tête `62 XX XX` reste à valider sur
+     * le véhicule cible. Identifiants : `bmu.<nom>.didXXXX`
+     * pour DB et `ecu.<nom>.didXXXX` pour DE/E5 ; les ids des
+     * DID déjà présents restent inchangés.
      */
     val gen4Community: List<SignalDefinition> = listOf(
         SignalDefinition(
@@ -89,7 +94,7 @@ object KnownSignals {
             channel = EcuChannel.BMU_DB,
             requestHex = "2201D1",
             unit = "%",
-            source = "spec §8.3 / R2 profil communautaire oct. 2025",
+            source = SOURCE_GEN4,
             confidence = SignalConfidence.COMMUNAUTAIRE_NON_VALIDE,
         ),
         SignalDefinition(
@@ -98,7 +103,7 @@ object KnownSignals {
             channel = EcuChannel.BMU_DB,
             requestHex = "2201D0",
             unit = "?",
-            source = "spec §8.3 / R2 profil communautaire oct. 2025",
+            source = SOURCE_GEN4,
             confidence = SignalConfidence.COMMUNAUTAIRE_NON_VALIDE,
         ),
         SignalDefinition(
@@ -107,7 +112,7 @@ object KnownSignals {
             channel = EcuChannel.BMU_DB,
             requestHex = "220106",
             unit = "V",
-            source = "spec §8.3 / R2 profil communautaire oct. 2025",
+            source = SOURCE_GEN4,
             confidence = SignalConfidence.COMMUNAUTAIRE_NON_VALIDE,
         ),
         SignalDefinition(
@@ -116,7 +121,7 @@ object KnownSignals {
             channel = EcuChannel.BMU_DB,
             requestHex = "220178",
             unit = "V",
-            source = "spec §8.3 / R2 profil communautaire oct. 2025",
+            source = SOURCE_GEN4,
             confidence = SignalConfidence.COMMUNAUTAIRE_NON_VALIDE,
         ),
         SignalDefinition(
@@ -125,37 +130,112 @@ object KnownSignals {
             channel = EcuChannel.BMU_DB,
             requestHex = "220179",
             unit = "V",
-            source = "spec §8.3 / R2 profil communautaire oct. 2025",
+            source = SOURCE_GEN4,
             confidence = SignalConfidence.COMMUNAUTAIRE_NON_VALIDE,
         ),
         SignalDefinition(
             id = "bmu.unknown.did010b",
-            label = "DID 010B (inconnu)",
+            label = "DID 010B (piste concurrente : capacité HV ou SOC2)",
             channel = EcuChannel.BMU_DB,
             requestHex = "22010B",
             unit = "",
-            source = "spec §8.3 / R2 profil communautaire oct. 2025",
+            source = SOURCE_GEN4,
             confidence = SignalConfidence.COMMUNAUTAIRE_NON_VALIDE,
         ),
         SignalDefinition(
             id = "bmu.unknown.did022a",
-            label = "DID 022A (inconnu)",
+            label = "SOC (piste, DID 022A)",
             channel = EcuChannel.BMU_DB,
             requestHex = "22022A",
-            unit = "",
-            source = "spec §8.3 / R2 profil communautaire oct. 2025",
+            unit = "%",
+            source = SOURCE_GEN4,
             confidence = SignalConfidence.COMMUNAUTAIRE_NON_VALIDE,
         ),
         SignalDefinition(
             id = "bmu.unknown.didf0d0",
-            label = "DID F0D0 (inconnu)",
+            label = "Odomètre (piste)",
             channel = EcuChannel.BMU_DB,
             requestHex = "22F0D0",
+            unit = "km",
+            source = SOURCE_GEN4,
+            confidence = SignalConfidence.COMMUNAUTAIRE_NON_VALIDE,
+        ),
+        SignalDefinition(
+            id = "ecu.hvAv.did0112",
+            label = "HV_AV (piste)",
+            channel = EcuChannel.ECU_E5,
+            requestHex = "220112",
+            unit = "kW",
+            source = SOURCE_GEN4,
+            confidence = SignalConfidence.COMMUNAUTAIRE_NON_VALIDE,
+        ),
+        SignalDefinition(
+            id = "ecu.lvVoltage.did011a",
+            label = "Tension basse LV_V (piste)",
+            channel = EcuChannel.ECU_DE,
+            requestHex = "22011A",
+            unit = "V",
+            source = SOURCE_GEN4,
+            confidence = SignalConfidence.COMMUNAUTAIRE_NON_VALIDE,
+        ),
+        SignalDefinition(
+            id = "ecu.chargerPressure.did0126",
+            label = "Pression connexion Type2 (piste)",
+            channel = EcuChannel.ECU_DE,
+            requestHex = "220126",
+            unit = "psi",
+            source = SOURCE_GEN4,
+            confidence = SignalConfidence.COMMUNAUTAIRE_NON_VALIDE,
+        ),
+        SignalDefinition(
+            id = "ecu.acNegotiated.did011c",
+            label = "Courant AC négocié (piste)",
+            channel = EcuChannel.ECU_DE,
+            requestHex = "22011C",
+            unit = "A",
+            source = SOURCE_GEN4,
+            confidence = SignalConfidence.COMMUNAUTAIRE_NON_VALIDE,
+        ),
+        SignalDefinition(
+            id = "ecu.acPct.did0119",
+            label = "AC_C_C_PCT (piste)",
+            channel = EcuChannel.ECU_DE,
+            requestHex = "220119",
+            unit = "%",
+            source = SOURCE_GEN4,
+            confidence = SignalConfidence.COMMUNAUTAIRE_NON_VALIDE,
+        ),
+        SignalDefinition(
+            id = "ecu.chargerConnected.did0113",
+            label = "Chargeur connecté (piste)",
+            channel = EcuChannel.ECU_DE,
+            requestHex = "220113",
             unit = "",
-            source = "spec §8.3 / R2 profil communautaire oct. 2025",
+            source = SOURCE_GEN4,
+            confidence = SignalConfidence.COMMUNAUTAIRE_NON_VALIDE,
+        ),
+        SignalDefinition(
+            id = "ecu.charging.did0107",
+            label = "Charge en cours Charging_A/B (piste)",
+            channel = EcuChannel.ECU_DE,
+            requestHex = "220107",
+            unit = "",
+            source = SOURCE_GEN4,
+            confidence = SignalConfidence.COMMUNAUTAIRE_NON_VALIDE,
+        ),
+        SignalDefinition(
+            id = "ecu.chargingTime.did0105",
+            label = "Temps de charge (piste)",
+            channel = EcuChannel.ECU_DE,
+            requestHex = "220105",
+            unit = "min",
+            source = SOURCE_GEN4,
             confidence = SignalConfidence.COMMUNAUTAIRE_NON_VALIDE,
         ),
     )
+
+    private const val SOURCE_GEN4 =
+        "WiCAN #468 @amwalters 2025-10-31 (profil Gen4, non validé)"
 
     /**
      * Décodages de l'ancien `2101` (spec §3.1 F4), sur

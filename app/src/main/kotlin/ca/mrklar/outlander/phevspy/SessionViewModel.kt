@@ -239,12 +239,63 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
 
     fun lancerSondesGen4() {
         val executor = construireExecutor() ?: return
-        demarrerFlux("Sondes Gen4") { executor.gen4Probes() }
+        demarrerFlux("Sondes Gen4 (fonctionnel d'abord)") { executor.gen4Probes() }
     }
 
     fun lancerScan(vehicleReady: Boolean) {
         val executor = construireExecutor() ?: return
         demarrerFlux("Scan phases 1-7") { executor.runPhases(vehicleReady) }
+    }
+
+    /**
+     * Balayage fonctionnel borné 0100-01FF vers la cible choisie.
+     * Même job que le scan (arrêt commun par [arreterScan]) ; le
+     * résultat est consigné en lignes sobres : début, chaque DID
+     * positif et chaque NRC, bilan avec compte des silences.
+     */
+    fun lancerBalayageFonctionnel(cible: EcuChannel) {
+        val executor = construireExecutor() ?: return
+        if (scanJob?.isActive == true) {
+            ajouterLignes("Balayage fonctionnel : un scan est déjà en cours.")
+            return
+        }
+        val libelleCible = when (cible) {
+            EcuChannel.BMU_DB -> "DB"
+            EcuChannel.ECU_DE -> "DE"
+            EcuChannel.ECU_E5 -> "E5"
+            else -> "%08X".format(cible.rxId)
+        }
+        _state.update { it.copy(scanRunning = true, error = null) }
+        ajouterLignes("Démarrage : Balayage DID 0100-01FF (fonctionnel, cible $libelleCible)")
+        scanJob = viewModelScope.launch {
+            try {
+                val resultat = executor.sweepFunctionalDidRange(cible, 0x0100..0x01FF)
+                for (did in resultat.positives) {
+                    ajouterLignes("DID %04X : positif".format(did))
+                }
+                var totalNegatives = 0
+                for ((nrc, dids) in resultat.negativesByNrc.toSortedMap()) {
+                    totalNegatives += dids.size
+                    for (did in dids) {
+                        ajouterLignes("DID %04X : NRC %02X".format(did, nrc))
+                    }
+                }
+                ajouterLignes(
+                    "Bilan balayage fonctionnel : ${resultat.positives.size} positif(s), " +
+                        "$totalNegatives négative(s), ${resultat.noDataCount} silence(s).",
+                )
+                resultat.stoppedReason?.let { ajouterLignes("Balayage arrêté : $it") }
+            } catch (e: CancellationException) {
+                ajouterLignes("Balayage fonctionnel interrompu.")
+                throw e
+            } catch (e: RequestRefusedException) {
+                ajouterLignes("Refus du garde lecture seule : ${e.message ?: "refus"}")
+            } catch (e: Throwable) {
+                signalerErreur("Balayage fonctionnel : ${e.message ?: e}")
+            } finally {
+                _state.update { it.copy(scanRunning = false) }
+            }
+        }
     }
 
     fun arreterScan() {

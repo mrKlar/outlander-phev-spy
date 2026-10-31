@@ -13,6 +13,7 @@ import ca.mrklar.outlander.protocol.uds.UdsClient
 import ca.mrklar.outlander.protocol.uds.UdsReply
 import ca.mrklar.outlander.protocol.vehicle.AffineDecoder
 import ca.mrklar.outlander.protocol.vehicle.KnownSignals
+import ca.mrklar.outlander.protocol.vehicle.SignalDefinition
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
@@ -96,7 +97,6 @@ class ScanExecutor(
 
     /** Canaux ayant répondu (presence-11 puis cible-29, ordre de découverte). */
     private val canauxRepondants = LinkedHashSet<EcuChannel>()
-    private var cible29Executee = false
 
     // -----------------------------------------------------------------------
     // Helpers gardés : pacing, refus journalisé, compteur CAN ERROR.
@@ -269,6 +269,89 @@ class ScanExecutor(
         uds.readDataByIdentifier(channel, did, timeoutMs = timeoutMs, phase = phaseCourante)
     }
 
+    /** Lecture fonctionnelle d'une définition : sa `requestHex`, son canal attendu. */
+    private suspend fun lireDidFonctionnel(
+        definition: SignalDefinition,
+        timeoutMs: Long,
+        emit: suspend (ScanEvent) -> Unit,
+    ): UdsReply? = lireDidFonctionnel(
+        expectedChannel = definition.channel,
+        did = definition.requestHex.substring(2).toInt(16),
+        requestHex = definition.requestHex,
+        timeoutMs = timeoutMs,
+        emit = emit,
+    )
+
+    /**
+     * Lecture d'un DID par la voie fonctionnelle 29 bits
+     * ([EcuChannel.FUNCTIONAL_29] via [ObdClient], jamais de
+     * transact brut ; l'appelant a assuré le protocole 29 bits,
+     * comme pour [lireDid]). Seule la charge sous l'en-tête du
+     * canal attendu (`18DAF1xx`, tiré de son `rxId`) compte.
+     *
+     * Sémantique de classification ([ObdClient.request] retourne
+     * par en-tête un Positive à charge COMPLÈTE, un Negative ou
+     * un ElmFailure) :
+     * - appel gardé interrompu (arrêt, ATRV, refus) : `null`,
+     *   comme [lireDid] ;
+     * - en-tête attendu absent : [UdsReply.NoData] (une réponse
+     *   sous un autre en-tête ne vaut pas pour cette cible) ;
+     * - entrée [UdsReply.ElmFailure] (dont charge incomplète,
+     *   déjà classée ainsi par [ObdClient]) : transmise telle
+     *   quelle ;
+     * - entrée [UdsReply.Negative] de service `0x22` : transmise ;
+     *   autre service : [UdsReply.NoData] (aucune réponse ELM
+     *   brute n'est disponible pour fabriquer un ElmFailure) ;
+     * - entrée Positive : [UdsReply.Positive] des données après
+     *   les 3 octets seulement si la charge commence par `0x62`
+     *   + écho exact du DID ; sinon [UdsReply.NoData], jamais de
+     *   Positive fabriquée.
+     *
+     * Un Positive/Negative fonctionnel inscrit le canal
+     * physique attendu dans les répondants et émet
+     * [ScanEvent.EcuResponded] à la première inscription.
+     */
+    private suspend fun lireDidFonctionnel(
+        expectedChannel: EcuChannel,
+        did: Int,
+        requestHex: String = "22%04X".format(did),
+        timeoutMs: Long,
+        emit: suspend (ScanEvent) -> Unit,
+    ): UdsReply? {
+        val reponses = appelObd(requestHex, emit) {
+            obd.request(
+                EcuChannel.FUNCTIONAL_29, requestHex,
+                timeoutMs = timeoutMs, phase = phaseCourante,
+            )
+        } ?: return null
+        val enteteAttendue = "%08X".format(expectedChannel.rxId)
+        val verdict: UdsReply = when (val entree = reponses[enteteAttendue]) {
+            null, UdsReply.NoData -> UdsReply.NoData
+            is UdsReply.ElmFailure -> entree
+            is UdsReply.Negative ->
+                if (entree.service == 0x22) entree else UdsReply.NoData
+            is UdsReply.Positive -> {
+                val charge = entree.payload
+                val did16 = did and 0xFFFF
+                val echoExact = charge.size >= 3 &&
+                    (charge[0].toInt() and 0xFF) == 0x62 &&
+                    (charge[1].toInt() and 0xFF) == (did16 shr 8) &&
+                    (charge[2].toInt() and 0xFF) == (did16 and 0xFF)
+                if (echoExact) {
+                    UdsReply.Positive(charge.copyOfRange(3, charge.size))
+                } else {
+                    UdsReply.NoData
+                }
+            }
+        }
+        if (verdict is UdsReply.Positive || verdict is UdsReply.Negative) {
+            if (canauxRepondants.add(expectedChannel)) {
+                emit(ScanEvent.EcuResponded(phaseCourante, enteteAttendue))
+            }
+        }
+        return verdict
+    }
+
     // -----------------------------------------------------------------------
     // Bascule de protocole (§6.3/§6.4)
     // -----------------------------------------------------------------------
@@ -337,7 +420,7 @@ class ScanExecutor(
             "presence-11" to { e -> phasePresence11(e) },
             "cible-29" to { e -> phaseCible29(e) },
             "identification" to { e -> phaseIdentification(e) },
-            "did-gen4" to { e -> corpsGen4(e, sonderSiInconnu = false) },
+            "did-gen4" to { e -> corpsGen4(e) },
         )
         for ((nom, corps) in phases) {
             if (arrete) break
@@ -498,7 +581,6 @@ class ScanExecutor(
      * éclatées par en-tête), réponse cherchée sous `18DAF1xx`.
      */
     private suspend fun phaseCible29(emit: suspend (ScanEvent) -> Unit) {
-        cible29Executee = true
         if (!assurerProtocole(bits29 = true, emit = emit)) return
         val timeout = config.identificationTimeoutMs
         for ((channel, adresse) in CIBLES_29) {
@@ -558,11 +640,12 @@ class ScanExecutor(
     }
 
     /**
-     * Sondes DID Gen4 communautaires sur `0xDB` (§7.2 étape 7),
-     * réappelable hors [runPhases] (l'intervalle entre deux passes est
-     * affaire d'orchestration d'app). Appelé isolément, `0xDB` est
-     * re-sondé par `testerPresent` ; sans réponse, note et fin — jamais
-     * une déclaration d'absence.
+     * Sondes DID Gen4 communautaires (§7.2 étape 7, campagne 1 :
+     * fonctionnel d'abord), réappelables hors [runPhases]
+     * (l'intervalle entre deux passes est affaire
+     * d'orchestration d'app). Aucun prérequis `testerPresent` :
+     * isolées, elles essaient directement les DID — jamais une
+     * déclaration d'absence.
      */
     fun gen4Probes(): Flow<ScanEvent> = flow {
         this@ScanExecutor.vehicleReady = true
@@ -571,7 +654,7 @@ class ScanExecutor(
         phaseCourante = "did-gen4"
         emit(ScanEvent.PhaseStarted("did-gen4"))
         if (gardeAtrv(force = true, emit = emit)) {
-            corpsGen4(emit, sonderSiInconnu = !cible29Executee)
+            corpsGen4(emit)
         }
         emettreArretSiNecessaire(emit)
         emit(ScanEvent.PhaseFinished("did-gen4"))
@@ -579,33 +662,32 @@ class ScanExecutor(
 
     private suspend fun corpsGen4(
         emit: suspend (ScanEvent) -> Unit,
-        sonderSiInconnu: Boolean,
     ) {
         val timeout = config.identificationTimeoutMs
-        if (EcuChannel.BMU_DB !in canauxRepondants) {
-            var joined = false
-            if (sonderSiInconnu && assurerProtocole(bits29 = true, emit = emit)) {
-                val tp = appelUds("3E00", emit) {
-                    uds.testerPresent(EcuChannel.BMU_DB, timeoutMs = timeout, phase = phaseCourante)
-                }
-                if (tp is UdsReply.Positive || tp is UdsReply.Negative) {
-                    canauxRepondants += EcuChannel.BMU_DB
-                    joined = true
-                }
-            }
-            if (!joined) {
-                val note = "cible 0xDB sans réponse: sondes Gen4 sautées (silence non concluant)"
-                journalNote(note)
-                emit(ScanEvent.Note(note))
-                return
-            }
-        }
         if (!assurerProtocole(bits29 = true, emit = emit)) return
+        var uneReponse = false
         for (definition in KnownSignals.gen4Community) {
             if (arrete) return
             val did = definition.requestHex.substring(2).toInt(16)
-            var reply = lireDid(EcuChannel.BMU_DB, did, timeout, emit)
-            if (reply is UdsReply.Negative && reply.nrc == 0x31) {
+            var reply: UdsReply?
+            val nrc31PhysiqueDb: Boolean
+            if (definition.channel in canauxRepondants) {
+                reply = lireDid(definition.channel, did, timeout, emit)
+                nrc31PhysiqueDb = definition.channel == EcuChannel.BMU_DB &&
+                    reply is UdsReply.Negative && reply.nrc == 0x31
+            } else {
+                val fonctionnel = lireDidFonctionnel(definition, timeout, emit)
+                if (fonctionnel is UdsReply.NoData) {
+                    reply = lireDid(definition.channel, did, timeout, emit)
+                    nrc31PhysiqueDb = definition.channel == EcuChannel.BMU_DB &&
+                        reply is UdsReply.Negative && reply.nrc == 0x31
+                } else {
+                    reply = fonctionnel
+                    nrc31PhysiqueDb = false
+                }
+            }
+            if (reply is UdsReply.Positive || reply is UdsReply.Negative) uneReponse = true
+            if (nrc31PhysiqueDb) {
                 // Hypothèse consignée : un essai sur DE puis E5 s'ils ont répondu.
                 for (autre in listOf(EcuChannel.ECU_DE, EcuChannel.ECU_E5)) {
                     if (autre !in canauxRepondants || arrete) continue
@@ -625,6 +707,11 @@ class ScanExecutor(
                 null
             }
             emit(ScanEvent.ProbeResult(definition.id, resumeReply(reply), decode))
+        }
+        if (!uneReponse && !arrete) {
+            val note = "aucune réponse Gen4 (fonctionnel ni physique) : silence non concluant"
+            journalNote(note)
+            emit(ScanEvent.Note(note))
         }
     }
 
@@ -663,6 +750,62 @@ class ScanExecutor(
         maxCount: Int = 500,
         vehicleReady: Boolean = true,
         retestInExtendedSession: Boolean = false,
+    ): SweepResult = balayageInterne(
+        bits29 = channel.extended29Bit,
+        range = range,
+        startAfter = startAfter,
+        maxCount = maxCount,
+        vehicleReady = vehicleReady,
+        lire = { did, emit -> lireDid(channel, did, config.sweepTimeoutMs, emit) },
+        canalRetest = if (retestInExtendedSession) channel else null,
+    )
+
+    /**
+     * Balayage borné par la voie fonctionnelle 29 bits (campagne
+     * 1) : mêmes gardes que [sweepDidRange] (`ATST64`/`ATSTFF`,
+     * ATRV au rythme [ScanConfig.atrvPollMs], compteur CAN
+     * ERROR, pacing, arrêt), lectures via le helper fonctionnel
+     * en attendant la réponse sous l'en-tête de
+     * [expectedChannel]. Pas de retest en session étendue : le
+     * garde interdit `0x10` en fonctionnel, le retest reste au
+     * balayage physique.
+     */
+    suspend fun sweepFunctionalDidRange(
+        expectedChannel: EcuChannel,
+        range: IntRange,
+        startAfter: Int? = null,
+        maxCount: Int = 256,
+        vehicleReady: Boolean = true,
+    ): SweepResult = balayageInterne(
+        bits29 = true,
+        range = range,
+        startAfter = startAfter,
+        maxCount = maxCount,
+        vehicleReady = vehicleReady,
+        lire = { did, emit ->
+            lireDidFonctionnel(
+                expectedChannel = expectedChannel,
+                did = did,
+                timeoutMs = config.sweepTimeoutMs,
+                emit = emit,
+            )
+        },
+        canalRetest = null,
+    )
+
+    /**
+     * Moteur commun des balayages bornés ; [lire] lit un DID
+     * (physique ou fonctionnel), [canalRetest] non nul active le
+     * retest en session étendue physique sur ce canal.
+     */
+    private suspend fun balayageInterne(
+        bits29: Boolean,
+        range: IntRange,
+        startAfter: Int?,
+        maxCount: Int,
+        vehicleReady: Boolean,
+        lire: suspend (Int, suspend (ScanEvent) -> Unit) -> UdsReply?,
+        canalRetest: EcuChannel?,
     ): SweepResult {
         this.vehicleReady = vehicleReady
         phaseCourante = "balayage"
@@ -683,7 +826,7 @@ class ScanExecutor(
         try {
             pace()
             nourrirCompteurCan(session.setResponseTimeoutHex("64"))
-            if (!assurerProtocole(channel.extended29Bit, emit)) {
+            if (!assurerProtocole(bits29, emit)) {
                 return SweepResult(emptyList(), emptyMap(), 0, raisonArret ?: "protocole refusé par l'adaptateur")
             }
             if (!gardeAtrv(force = true, emit = emit)) {
@@ -692,17 +835,17 @@ class ScanExecutor(
             val dids = range.filter { startAfter == null || it > startAfter }.take(maxCount.coerceAtLeast(0))
             for (did in dids) {
                 if (arrete) break
-                consigner(did, lireDid(channel, did, config.sweepTimeoutMs, emit))
+                consigner(did, lire(did, emit))
             }
 
-            if (retestInExtendedSession && !arrete) {
+            if (canalRetest != null && !arrete) {
                 val aRelire = negatives.entries
                     .filter { it.key in NRC_RETEST_SESSION_ETENDUE }
                     .flatMap { it.value }
                 if (aRelire.isNotEmpty()) {
                     val ouverture = appelUds("1003", emit) {
                         uds.diagnosticSessionControl(
-                            channel, 3, timeoutMs = config.sweepTimeoutMs, phase = phaseCourante,
+                            canalRetest, 3, timeoutMs = config.sweepTimeoutMs, phase = phaseCourante,
                         )
                     }
                     if (ouverture is UdsReply.Positive) {
@@ -713,7 +856,7 @@ class ScanExecutor(
                                         kotlinx.coroutines.delay(2000L)
                                         try {
                                             uds.testerPresent(
-                                                channel,
+                                                canalRetest,
                                                 timeoutMs = config.sweepTimeoutMs,
                                                 phase = phaseCourante,
                                             )
@@ -725,7 +868,7 @@ class ScanExecutor(
                                 try {
                                     for (did in aRelire) {
                                         if (arrete) break
-                                        when (val relu = lireDid(channel, did, config.sweepTimeoutMs, emit)) {
+                                        when (val relu = lireDid(canalRetest, did, config.sweepTimeoutMs, emit)) {
                                             is UdsReply.Positive -> {
                                                 retirerDesNegatifs(negatives, did)
                                                 positives += did
@@ -744,7 +887,7 @@ class ScanExecutor(
                         } finally {
                             appelUds("1001", emit) {
                                 uds.diagnosticSessionControl(
-                                    channel, 1, timeoutMs = config.sweepTimeoutMs, phase = phaseCourante,
+                                    canalRetest, 1, timeoutMs = config.sweepTimeoutMs, phase = phaseCourante,
                                 )
                             }
                         }

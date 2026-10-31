@@ -134,7 +134,7 @@ class SignalsTest {
     fun gen4SansEquationDonneNull() {
         val donnees = ByteArray(32) { (it * 7 + 3).toByte() }
 
-        assertEquals(8, KnownSignals.gen4Community.size)
+        assertEquals(16, KnownSignals.gen4Community.size)
         for (definition in KnownSignals.gen4Community) {
             assertNull(definition.byteOffset, definition.id)
             assertNull(definition.byteLength, definition.id)
@@ -216,14 +216,14 @@ class SignalsTest {
 
     @Test
     fun registreSansSohEtConfiancesCommunautaires() {
-        assertEquals(8, KnownSignals.gen4Community.size)
+        assertEquals(16, KnownSignals.gen4Community.size)
         assertEquals(4, KnownSignals.legacy2101.size)
-        assertEquals(12, KnownSignals.all.size)
+        assertEquals(20, KnownSignals.all.size)
         assertEquals(
             KnownSignals.gen4Community + KnownSignals.legacy2101,
             KnownSignals.all,
         )
-        assertEquals(12, KnownSignals.all.map { it.id }.toSet().size)
+        assertEquals(20, KnownSignals.all.map { it.id }.toSet().size)
 
         for (definition in KnownSignals.all) {
             assertTrue(!definition.id.contains("soh"), definition.id)
@@ -233,11 +233,24 @@ class SignalsTest {
                 definition.id,
             )
         }
+        // Canaux attendus par DID (répondant du profil Gen4, campagne 1).
+        val canauxAttendus = mapOf(
+            "2201D1" to EcuChannel.BMU_DB, "2201D0" to EcuChannel.BMU_DB,
+            "220106" to EcuChannel.BMU_DB, "220178" to EcuChannel.BMU_DB,
+            "220179" to EcuChannel.BMU_DB, "22010B" to EcuChannel.BMU_DB,
+            "22022A" to EcuChannel.BMU_DB, "22F0D0" to EcuChannel.BMU_DB,
+            "220112" to EcuChannel.ECU_E5,
+            "22011A" to EcuChannel.ECU_DE, "220126" to EcuChannel.ECU_DE,
+            "22011C" to EcuChannel.ECU_DE, "220119" to EcuChannel.ECU_DE,
+            "220113" to EcuChannel.ECU_DE, "220107" to EcuChannel.ECU_DE,
+            "220105" to EcuChannel.ECU_DE,
+        )
+        assertEquals(canauxAttendus.keys, KnownSignals.gen4Community.map { it.requestHex }.toSet())
         for (definition in KnownSignals.gen4Community) {
-            assertEquals(EcuChannel.BMU_DB, definition.channel, definition.id)
+            assertEquals(canauxAttendus[definition.requestHex], definition.channel, definition.id)
             assertTrue(definition.requestHex.startsWith("22"), definition.id)
             assertEquals(
-                "spec §8.3 / R2 profil communautaire oct. 2025",
+                "WiCAN #468 @amwalters 2025-10-31 (profil Gen4, non validé)",
                 definition.source,
                 definition.id,
             )
@@ -258,8 +271,16 @@ class SignalsTest {
             Triple("bmu.cellMax.did0178", "220178", "V"),
             Triple("bmu.cellMin.did0179", "220179", "V"),
             Triple("bmu.unknown.did010b", "22010B", ""),
-            Triple("bmu.unknown.did022a", "22022A", ""),
-            Triple("bmu.unknown.didf0d0", "22F0D0", ""),
+            Triple("bmu.unknown.did022a", "22022A", "%"),
+            Triple("bmu.unknown.didf0d0", "22F0D0", "km"),
+            Triple("ecu.hvAv.did0112", "220112", "kW"),
+            Triple("ecu.lvVoltage.did011a", "22011A", "V"),
+            Triple("ecu.chargerPressure.did0126", "220126", "psi"),
+            Triple("ecu.acNegotiated.did011c", "22011C", "A"),
+            Triple("ecu.acPct.did0119", "220119", "%"),
+            Triple("ecu.chargerConnected.did0113", "220113", ""),
+            Triple("ecu.charging.did0107", "220107", ""),
+            Triple("ecu.chargingTime.did0105", "220105", "min"),
         )
         assertEquals(
             attendu,
@@ -271,15 +292,15 @@ class SignalsTest {
             assertNotNull(KnownSignals.byId("bmu.socmax.did01d0")).label,
         )
         assertEquals(
-            "DID 010B (inconnu)",
+            "DID 010B (piste concurrente : capacité HV ou SOC2)",
             assertNotNull(KnownSignals.byId("bmu.unknown.did010b")).label,
         )
         assertEquals(
-            "DID 022A (inconnu)",
+            "SOC (piste, DID 022A)",
             assertNotNull(KnownSignals.byId("bmu.unknown.did022a")).label,
         )
         assertEquals(
-            "DID F0D0 (inconnu)",
+            "Odomètre (piste)",
             assertNotNull(KnownSignals.byId("bmu.unknown.didf0d0")).label,
         )
     }
@@ -319,6 +340,14 @@ class SignalsTest {
             )
             // Ne doit pas lever.
             RequestGuard.assertAllowed(definition.channel, requete)
+        }
+        // La voie fonctionnelle émet les mêmes 22XXXX sur FUNCTIONAL_29.
+        for (definition in KnownSignals.gen4Community) {
+            assertEquals(
+                GuardResult.Allowed,
+                RequestGuard.check(EcuChannel.FUNCTIONAL_29, parseHex(definition.requestHex)),
+                definition.id,
+            )
         }
     }
 }

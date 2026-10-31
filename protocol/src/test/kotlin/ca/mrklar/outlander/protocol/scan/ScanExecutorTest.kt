@@ -130,11 +130,18 @@ class ScanExecutorTest {
             add(ex("22F186", "18DAF1DB 04 62 F1 86 01\r>"))
             for (did in didsIdentification.drop(1)) add(nd("22%04X".format(did)))
             add(nd("1901FF")); add(nd("1902FF")); add(nd("190A"))
-            // did-gen4 : 01D1 positif (4 octets), les 7 autres en NRC 31.
+            // did-gen4 : DB déjà répondant → physique pour ses DID : 01D1 positif
+            // (4 octets), les 7 autres en NRC 31. DE/E5 non répondants → fonctionnel
+            // d'abord (NO DATA), puis physique en dernier recours (NO DATA).
             add(atrv())
             add(ex("2201D1", "18DAF1DB 07 62 01 D1 00 64 00 00\r>"))
             for (req in listOf("2201D0", "220106", "220178", "220179", "22010B", "22022A", "22F0D0")) {
                 add(ex(req, "18DAF1DB 03 7F 22 31\r>"))
+            }
+            add(nd("220112")); addAll(prog29("E5")); add(nd("220112"))
+            add(nd("22011A")); addAll(prog29("DE")); add(nd("22011A"))
+            for (req in listOf("220126", "22011C", "220119", "220113", "220107", "220105")) {
+                add(nd(req)); add(nd(req))
             }
         }
 
@@ -426,6 +433,177 @@ class ScanExecutorTest {
         )
         assertEquals(script.size, transport.writtenTexts.size)
         assertTrue(transport.mismatches.isEmpty(), "mismatches=${transport.mismatches}")
+
+        session.close()
+    }
+
+    // -----------------------------------------------------------------------
+    // Campagne 1 : sondes fonctionnelles d'abord, balayage fonctionnel
+    // -----------------------------------------------------------------------
+
+    /** Rejoue les écritures non-AT dans le garde (au moins un canal plausible). */
+    private fun assertEcrituresAutorisees(transport: ScriptedElmTransport) {
+        val canauxPlausibles = listOf(
+            EcuChannel.LEGISLATED_11, EcuChannel.FUNCTIONAL_29,
+            EcuChannel.BMU_DB, EcuChannel.ECU_DE, EcuChannel.ECU_E5,
+            EcuChannel.LEGACY_BMU, EcuChannel.physical11(0x7E0, 0x7E8),
+        )
+        for (ecriture in transport.writtenTexts) {
+            val texte = ecriture.trim()
+            if (texte.startsWith("AT") || texte.startsWith("ST")) continue
+            val hex = texte.filterNot { it.isWhitespace() }.uppercase()
+            assertTrue(
+                hex.length % 2 == 0 && hex.all { it in '0'..'9' || it in 'A'..'F' },
+                "écriture non-AT non hexadécimale: « $ecriture »",
+            )
+            val octets = ByteArray(hex.length / 2) { hex.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
+            assertTrue(
+                canauxPlausibles.any { RequestGuard.check(it, octets) is GuardResult.Allowed },
+                "requête hors liste blanche sur tous les canaux: $hex",
+            )
+        }
+    }
+
+    @Test
+    fun sondesIsoleesFonctionnelSans3E00() = runTest(UnconfinedTestDispatcher()) {
+        val script = buildList {
+            add(atrv()); add(ok("ATSP7")); add(ok("ATCP18"))
+            add(ok("ATSH DB 33 F1")); add(ok("ATFCSM0"))
+            add(ex("2201D1", "18DAF1DB 07 62 01 D1 00 64 00 00\r>"))
+            repeat(200) { add(ex(null, "NO DATA\r>")) }
+        }
+        val transport = ScriptedElmTransport(script)
+        val journal = InMemoryJournal()
+        val (session, executor) = executor(transport, journal)
+
+        val evenements = executor.gen4Probes().toList()
+
+        val probeSoc = evenements.filterIsInstance<ScanEvent.ProbeResult>()
+            .singleOrNull { it.signalId == "bmu.soc.did01d1" }
+        assertNotNull(probeSoc)
+        assertTrue(probeSoc.reply.startsWith("positive"), "reply=${probeSoc.reply}")
+        assertNull(probeSoc.decoded)
+        assertFalse(
+            transport.writtenTexts.any { it.trim() == "3E00" },
+            "écritures=${transport.writtenTexts}",
+        )
+        assertTrue(
+            evenements.filterIsInstance<ScanEvent.EcuResponded>()
+                .any { it.phase == "did-gen4" && it.headerHex == "18DAF1DB" },
+            "evenements=$evenements",
+        )
+        assertFalse(
+            evenements.filterIsInstance<ScanEvent.Note>().any {
+                it.message.contains("aucune réponse Gen4")
+            },
+            "evenements=$evenements",
+        )
+        assertTrue(transport.mismatches.isEmpty(), "mismatches=${transport.mismatches}")
+        assertEcrituresAutorisees(transport)
+
+        session.close()
+    }
+
+    @Test
+    fun sondesIsoleesEchoDifferentPasDePositive() = runTest(UnconfinedTestDispatcher()) {
+        val script = buildList {
+            add(atrv()); add(ok("ATSP7")); add(ok("ATCP18"))
+            add(ok("ATSH DB 33 F1")); add(ok("ATFCSM0"))
+            // Écho 01D9 alors que 01D1 était demandé : jamais de Positive fabriquée.
+            add(ex("2201D1", "18DAF1DB 05 62 01 D9 AA BB\r>"))
+            repeat(200) { add(ex(null, "NO DATA\r>")) }
+        }
+        val transport = ScriptedElmTransport(script)
+        val journal = InMemoryJournal()
+        val (session, executor) = executor(transport, journal)
+
+        val evenements = executor.gen4Probes().toList()
+
+        val probeSoc = evenements.filterIsInstance<ScanEvent.ProbeResult>()
+            .singleOrNull { it.signalId == "bmu.soc.did01d1" }
+        assertNotNull(probeSoc)
+        assertEquals("no_data", probeSoc.reply)
+        assertFalse(
+            evenements.filterIsInstance<ScanEvent.EcuResponded>().any { it.headerHex == "18DAF1DB" },
+            "evenements=$evenements",
+        )
+        assertTrue(
+            evenements.filterIsInstance<ScanEvent.Note>().any {
+                it.message.contains("aucune réponse Gen4 (fonctionnel ni physique) : silence non concluant")
+            },
+            "evenements=$evenements",
+        )
+        assertFalse(transport.writtenTexts.any { it.trim() == "3E00" })
+        assertEcrituresAutorisees(transport)
+
+        session.close()
+    }
+
+    @Test
+    fun sondesIsoleesAutreEntetePasDePositive() = runTest(UnconfinedTestDispatcher()) {
+        val script = buildList {
+            add(atrv()); add(ok("ATSP7")); add(ok("ATCP18"))
+            add(ok("ATSH DB 33 F1")); add(ok("ATFCSM0"))
+            // Réponse sous DE alors que le BMU (DB) est visé.
+            add(ex("2201D1", "18DAF1DE 07 62 01 D1 00 64 00 00\r>"))
+            repeat(200) { add(ex(null, "NO DATA\r>")) }
+        }
+        val transport = ScriptedElmTransport(script)
+        val journal = InMemoryJournal()
+        val (session, executor) = executor(transport, journal)
+
+        val evenements = executor.gen4Probes().toList()
+
+        val probeSoc = evenements.filterIsInstance<ScanEvent.ProbeResult>()
+            .singleOrNull { it.signalId == "bmu.soc.did01d1" }
+        assertNotNull(probeSoc)
+        assertEquals("no_data", probeSoc.reply)
+        assertFalse(
+            evenements.filterIsInstance<ScanEvent.EcuResponded>().any { it.headerHex == "18DAF1DB" },
+            "evenements=$evenements",
+        )
+        assertFalse(transport.writtenTexts.any { it.trim() == "3E00" })
+        assertEcrituresAutorisees(transport)
+
+        session.close()
+    }
+
+    @Test
+    fun balayageFonctionnelMini() = runTest(UnconfinedTestDispatcher()) {
+        val script = buildList {
+            add(ok("ATST64"))
+            add(ok("ATSP7")); add(ok("ATCP18"))
+            add(atrv())
+            add(ok("ATSH DB 33 F1")); add(ok("ATFCSM0"))
+            add(ex("220100", "18DAF1DB 04 62 01 00 AA\r>"))
+            add(ex("220101", "18DAF1DB 03 7F 22 31\r>"))
+            add(nd("220102"))
+            add(ex("220103", "18DAF1DB 03 7F 22 33\r>"))
+            add(ok("ATSTFF"))
+        }
+        val transport = ScriptedElmTransport(script)
+        val journal = InMemoryJournal()
+        val (session, executor) = executor(transport, journal)
+
+        val resultat = executor.sweepFunctionalDidRange(EcuChannel.BMU_DB, 0x0100..0x0103)
+
+        assertEquals(
+            SweepResult(
+                positives = listOf(0x0100),
+                negativesByNrc = mapOf(0x31 to listOf(0x0101), 0x33 to listOf(0x0103)),
+                noDataCount = 1,
+                stoppedReason = null,
+            ),
+            resultat,
+        )
+        // Pas de retest en session étendue dans la voie fonctionnelle.
+        assertFalse(transport.writtenTexts.any { it.trim() == "1003" || it.trim() == "1001" })
+        assertFalse(transport.writtenTexts.any { it.trim() == "3E00" })
+        assertTrue(transport.writtenTexts.any { it.contains("ATST64") })
+        assertTrue(transport.writtenTexts.any { it.contains("ATSTFF") })
+        assertEquals(script.size, transport.writtenTexts.size)
+        assertTrue(transport.mismatches.isEmpty(), "mismatches=${transport.mismatches}")
+        assertEcrituresAutorisees(transport)
 
         session.close()
     }
