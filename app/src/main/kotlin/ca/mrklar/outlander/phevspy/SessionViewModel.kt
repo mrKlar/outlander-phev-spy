@@ -60,6 +60,7 @@ data class SessionUiState(
     val historiqueCellules: List<Pair<Int, Int>> = emptyList(),
     val suiviMaj: String? = null,
     val suiviCycles: Int = 0,
+    val odoKm: Int? = null,
 )
 
 /**
@@ -392,6 +393,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
                 },
                 suiviMaj = heure,
                 suiviCycles = etat.suiviCycles + 1,
+                odoKm = evenement.odoKm ?: etat.odoKm,
             )
         }
     }
@@ -597,7 +599,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
 
     private companion object {
         const val MAX_LIGNES = 400
-        const val MAX_HISTORIQUE_CELLULES = 240
+        const val MAX_HISTORIQUE_CELLULES = 600
         val FORMAT_HORODATAGE: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")
         val FORMAT_HEURE: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
         val MOTIF_LECTURE_DID: Regex = Regex("^22[0-9A-F]{4}$")

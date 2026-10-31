@@ -48,6 +48,7 @@ sealed interface ScanEvent {
      * Un cycle du suivi cellules : valeurs brutes (big-endian non
      * signé, charge après `62 <DID>`) des DID DB `0178`, `0179`,
      * `0106`, `01D1` ; `null` = lecture non positive de ce cycle.
+     * [odoKm] : DID `F0D0` (km directs, corrélé), lu un cycle sur 30.
      * Aucune conversion ici : les échelles candidates (mV, ×0,01 V)
      * restent des hypothèses affichées comme telles par l'app.
      */
@@ -56,6 +57,7 @@ sealed interface ScanEvent {
         val minBrut: Int?,
         val packBrut: Int?,
         val socBrut: Int?,
+        val odoKm: Int? = null,
     ) : ScanEvent
 }
 
@@ -695,6 +697,7 @@ class ScanExecutor(
             assurerProtocole(bits29 = true, emit = emit)
         ) {
             val timeout = config.identificationTimeoutMs
+            var cycle = 0
             while (!arrete && currentCoroutineContext().isActive) {
                 val max = lireBrutSuivi(0x0178, timeout, emit)
                 if (arrete) break
@@ -704,7 +707,11 @@ class ScanExecutor(
                 if (arrete) break
                 val soc = lireBrutSuivi(0x01D1, timeout, emit)
                 if (arrete) break
-                emit(ScanEvent.Cellules(max, min, pack, soc))
+                // Odomètre (seul DID corrélé) : premier cycle puis tous les 30.
+                val odo = if (cycle % 30 == 0) lireBrutSuivi(0xF0D0, timeout, emit) else null
+                if (arrete) break
+                emit(ScanEvent.Cellules(max, min, pack, soc, odo))
+                cycle++
                 delayFn(config.suiviIntervalleMs)
             }
         }

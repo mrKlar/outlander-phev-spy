@@ -6,13 +6,16 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -29,17 +32,22 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -80,6 +88,7 @@ private fun EcranSession(vm: SessionViewModel = viewModel()) {
     var etapeEpb by rememberSaveable { mutableStateOf("Repos, EPB serré") }
     var observationEpb by rememberSaveable { mutableStateOf("") }
     var cibleCle by rememberSaveable { mutableStateOf("DB") }
+    var ecranConduite by rememberSaveable { mutableStateOf(false) }
     val cible = when (cibleCle) {
         "DE" -> EcuChannel.ECU_DE
         "E5" -> EcuChannel.ECU_E5
@@ -91,6 +100,11 @@ private fun EcranSession(vm: SessionViewModel = viewModel()) {
     ) { vm.refreshPermissions(permissionsBluetoothAccordees(context)) }
 
     LaunchedEffect(Unit) { vm.refreshPermissions(permissionsBluetoothAccordees(context)) }
+
+    if (ecranConduite) {
+        EcranConduite(vm, state) { ecranConduite = false }
+        return
+    }
 
     Column(
         modifier = Modifier
@@ -301,6 +315,10 @@ private fun EcranSession(vm: SessionViewModel = viewModel()) {
                 Text("Arrêter le suivi")
             }
         }
+        OutlinedButton(
+            onClick = { ecranConduite = true },
+            modifier = Modifier.padding(top = 4.dp),
+        ) { Text("Écran conduite (plein écran)") }
         Text(
             state.cellDeltaMv?.let { "Δ $it mV" } ?: "Δ — mV",
             style = MaterialTheme.typography.displayMedium,
@@ -411,6 +429,171 @@ private fun EcranSession(vm: SessionViewModel = viewModel()) {
             Text(ligne, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
         }
         Spacer(Modifier.height(24.dp))
+    }
+}
+
+/**
+ * Écran conduite plein écran (demande du propriétaire, façon
+ * LeafSpy) : delta en très gros, graphique des lectures en barres
+ * min→max, lisible d'un coup d'œil sur support. Aucune interaction
+ * requise une fois le suivi démarré à l'arrêt ; l'écran reste allumé.
+ *
+ * Honnêteté des données : aucune tension par cellule individuelle
+ * n'est connue à ce jour — chaque barre est la plage min→max d'une
+ * lecture (DID 0179/0178, candidats mV), pas une cellule.
+ */
+@Composable
+private fun EcranConduite(
+    vm: SessionViewModel,
+    state: SessionUiState,
+    onRetour: () -> Unit,
+) {
+    val vue = LocalView.current
+    DisposableEffect(Unit) {
+        vue.keepScreenOn = true
+        onDispose { vue.keepScreenOn = false }
+    }
+    BackHandler { onRetour() }
+
+    fun enV(mv: Int?): String = mv?.let { "%.3f".format(it / 1000.0) } ?: "—.———"
+
+    Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
+        Row(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Pack ${state.packVolts?.let { "%.1f V".format(it) } ?: "—"} · " +
+                        "SOC brut ${state.socBrut ?: "—"}",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 15.sp,
+                )
+                Text(
+                    "odo=${state.odoKm?.let { "$it km" } ?: "—"} · " +
+                        "${state.suiviCycles} cycles · maj ${state.suiviMaj ?: "—"}",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 15.sp,
+                )
+                Text(
+                    if (state.suiviActif) "Suivi en cours (lecture seule)" else "Suivi arrêté",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 15.sp,
+                )
+            }
+            Text(
+                state.cellDeltaMv?.let { "$it mV" } ?: "— mV",
+                fontSize = 56.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+            )
+        }
+
+        val points = state.historiqueCellules
+        if (points.size < 2) {
+            Box(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "En attente de lectures… Démarre le suivi (à l'arrêt), " +
+                        "les barres min→max apparaîtront ici.",
+                    fontSize = 18.sp,
+                )
+            }
+        } else {
+            val gMax = points.maxOf { it.first }.toFloat()
+            val gMin = points.minOf { it.second }.toFloat()
+            val centre = (gMax + gMin) / 2f
+            val demiFenetre = maxOf(30f, (gMax - gMin) / 2f + 10f)
+            val haut = centre + demiFenetre
+            val bas = centre - demiFenetre
+            Row(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                Column(modifier = Modifier.fillMaxHeight()) {
+                    Text(enV(haut.toInt()), fontFamily = FontFamily.Monospace, fontSize = 14.sp)
+                    Spacer(Modifier.weight(1f))
+                    Text(enV(centre.toInt()), fontFamily = FontFamily.Monospace, fontSize = 14.sp)
+                    Spacer(Modifier.weight(1f))
+                    Text(enV(bas.toInt()), fontFamily = FontFamily.Monospace, fontSize = 14.sp)
+                }
+                val couleurBarre = Color(0xFFD32F2F)
+                val couleurMin = Color(0xFF1565C0)
+                val couleurGrille = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+                Canvas(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                    val amplitude = (haut - bas).coerceAtLeast(1f)
+                    fun y(mv: Float): Float = size.height * (haut - mv) / amplitude
+                    for (f in listOf(0.25f, 0.5f, 0.75f)) {
+                        drawLine(
+                            couleurGrille,
+                            Offset(0f, size.height * f),
+                            Offset(size.width, size.height * f),
+                            strokeWidth = 1.5f,
+                        )
+                    }
+                    val pasX = size.width / points.size
+                    val largeurBarre = (pasX * 0.72f).coerceAtLeast(2.5f)
+                    points.forEachIndexed { i, (max, min) ->
+                        val x = pasX * (i + 0.5f)
+                        // Tige du bas de la fenêtre jusqu'au min (pâle),
+                        // segment min→max (plein), repère bleu au min.
+                        drawLine(
+                            couleurBarre.copy(alpha = 0.35f),
+                            Offset(x, size.height),
+                            Offset(x, y(min.toFloat())),
+                            strokeWidth = largeurBarre,
+                        )
+                        drawLine(
+                            couleurBarre,
+                            Offset(x, y(min.toFloat())),
+                            Offset(x, y(max.toFloat())),
+                            strokeWidth = largeurBarre,
+                        )
+                        drawLine(
+                            couleurMin,
+                            Offset(x - largeurBarre / 2f, y(min.toFloat())),
+                            Offset(x + largeurBarre / 2f, y(min.toFloat())),
+                            strokeWidth = 3.5f,
+                        )
+                    }
+                }
+            }
+        }
+
+        Text(
+            "min ${enV(state.cellMinMv)} · max ${enV(state.cellMaxMv)} · " +
+                "Δ ${state.cellDeltaMv?.let { "$it mV" } ?: "—"}",
+            fontFamily = FontFamily.Monospace,
+            fontSize = 24.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            "Δ session : min ${state.deltaMinSession?.let { "$it mV" } ?: "—"} · " +
+                "max ${state.deltaMaxSession?.let { "$it mV" } ?: "—"}",
+            fontFamily = FontFamily.Monospace,
+            fontSize = 18.sp,
+        )
+        Text(
+            "Barres = plage min→max par lecture (DID 0178/0179, mV " +
+                "candidats). Cellules individuelles : DID non trouvé.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+
+        Row(modifier = Modifier.padding(top = 8.dp)) {
+            val connecte = state.connectedName != null
+            if (!state.suiviActif) {
+                Button(
+                    onClick = { vm.lancerSuiviCellules() },
+                    enabled = actionsSessionActives(connecte, state.scanRunning),
+                    modifier = Modifier.weight(1f).padding(end = 4.dp),
+                ) { Text("Démarrer le suivi", fontSize = 18.sp) }
+            } else {
+                Button(
+                    onClick = { vm.arreterScan() },
+                    modifier = Modifier.weight(1f).padding(end = 4.dp),
+                ) { Text("Arrêter le suivi", fontSize = 18.sp) }
+            }
+            OutlinedButton(
+                onClick = onRetour,
+                modifier = Modifier.weight(1f).padding(start = 4.dp),
+            ) { Text("Retour", fontSize = 18.sp) }
+        }
     }
 }
 
