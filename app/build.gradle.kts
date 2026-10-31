@@ -61,4 +61,7 @@ dependencies {
     implementation(project(":protocol"))
     implementation(project(":transport-android"))
     implementation(libs.androidx.compose.ui.tooling.preview)
+    testImplementation(kotlin("test-junit5"))
 }
+
+tasks.withType<Test> { useJUnitPlatform() }

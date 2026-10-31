@@ -9,7 +9,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,7 +20,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -36,7 +34,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -74,13 +71,9 @@ private fun permissionsBluetoothAccordees(context: Context): Boolean =
 private fun EcranSession(vm: SessionViewModel = viewModel()) {
     val context = LocalContext.current
     val state by vm.state.collectAsState()
-    var dehors by rememberSaveable { mutableStateOf(false) }
-    var stationne by rememberSaveable { mutableStateOf(false) }
-    var ready by rememberSaveable { mutableStateOf(false) }
     var soc by rememberSaveable { mutableStateOf("") }
     var autonomie by rememberSaveable { mutableStateOf("") }
     var saisieConsole by rememberSaveable { mutableStateOf("") }
-    var securiseRoues by rememberSaveable { mutableStateOf(false) }
     var etapeEpb by rememberSaveable { mutableStateOf("Repos, EPB serré") }
     var observationEpb by rememberSaveable { mutableStateOf("") }
     var cibleCle by rememberSaveable { mutableStateOf("DB") }
@@ -188,9 +181,6 @@ private fun EcranSession(vm: SessionViewModel = viewModel()) {
 
         Spacer(Modifier.height(16.dp))
         Text("Avant le scan", style = MaterialTheme.typography.titleMedium)
-        LigneCase("Véhicule dehors ou lieu ventilé", dehors) { dehors = it }
-        LigneCase("Stationné, frein de parc serré", stationne) { stationne = it }
-        LigneCase("État READY", ready) { ready = it }
         Row {
             OutlinedTextField(
                 value = soc,
@@ -210,7 +200,7 @@ private fun EcranSession(vm: SessionViewModel = viewModel()) {
             )
         }
         Button(
-            onClick = { vm.consignerVeriteTerrain(soc, autonomie, ready) },
+            onClick = { vm.consignerVeriteTerrain(soc, autonomie) },
             modifier = Modifier.padding(top = 4.dp),
         ) { Text("Consigner au journal") }
 
@@ -248,13 +238,13 @@ private fun EcranSession(vm: SessionViewModel = viewModel()) {
             Text("Sondes Gen4 (fonctionnel d'abord)")
         }
         Button(
-            onClick = { vm.lancerScan(ready) },
-            enabled = connecte && dehors && stationne && ready && !state.scanRunning,
+            onClick = { vm.lancerScan() },
+            enabled = actionsSessionActives(connecte, state.scanRunning),
             modifier = Modifier.padding(top = 4.dp),
         ) { Text("Lancer le scan (phases 1-7)") }
         Button(
             onClick = { vm.lancerBalayageFonctionnel(cible) },
-            enabled = connecte && dehors && stationne && ready && !state.scanRunning,
+            enabled = actionsSessionActives(connecte, state.scanRunning),
             modifier = Modifier.padding(top = 4.dp),
         ) { Text("Balayer DID 0100-01FF (fonctionnel, cible choisie)") }
         if (state.scanRunning) {
@@ -295,9 +285,6 @@ private fun EcranSession(vm: SessionViewModel = viewModel()) {
                 "seule. Véhicule sécurisé; ne jamais se placer sous un véhicule " +
                 "non supporté.",
         )
-        LigneCase("Véhicule sécurisé pour travailler autour des roues arrière", securiseRoues) {
-            securiseRoues = it
-        }
         listOf(
             "Repos, EPB serré",
             "Repos, EPB desserré",
@@ -320,8 +307,8 @@ private fun EcranSession(vm: SessionViewModel = viewModel()) {
             modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
         )
         Button(
-            onClick = { vm.lancerSnapshotEpb(etapeEpb, observationEpb, ready) },
-            enabled = connecte && dehors && stationne && securiseRoues && !state.scanRunning,
+            onClick = { vm.lancerSnapshotEpb(etapeEpb, observationEpb) },
+            enabled = actionsSessionActives(connecte, state.scanRunning),
             modifier = Modifier.padding(top = 4.dp),
         ) { Text("Capturer cet état (lecture seule)") }
         Text(
@@ -341,17 +328,6 @@ private fun EcranSession(vm: SessionViewModel = viewModel()) {
     }
 }
 
-@Composable
-private fun LigneCase(libelle: String, cochee: Boolean, onChange: (Boolean) -> Unit) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth().clickable { onChange(!cochee) },
-    ) {
-        Checkbox(checked = cochee, onCheckedChange = onChange)
-        Text(libelle)
-    }
-}
-
 @Preview(showBackground = true)
 @Composable
 private fun EcranSessionApercu() {
@@ -360,9 +336,6 @@ private fun EcranSessionApercu() {
             Text("Outlander PHEV Spy", style = MaterialTheme.typography.headlineMedium)
             Text("Non connecté")
             Text("Lecture seule. Ne jamais lancer un scan en roulant.")
-            LigneCase("Véhicule dehors ou lieu ventilé", false) {}
-            LigneCase("Stationné, frein de parc serré", false) {}
-            LigneCase("État READY", false) {}
         }
     }
 }

@@ -242,9 +242,9 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         demarrerFlux("Sondes Gen4 (fonctionnel d'abord)") { executor.gen4Probes() }
     }
 
-    fun lancerScan(vehicleReady: Boolean) {
+    fun lancerScan() {
         val executor = construireExecutor() ?: return
-        demarrerFlux("Scan phases 1-7") { executor.runPhases(vehicleReady) }
+        demarrerFlux("Scan phases 1-7") { executor.runPhases(true) }
     }
 
     /**
@@ -305,7 +305,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         ajouterLignes("Arrêt demandé.")
     }
 
-    fun consignerVeriteTerrain(socPourcent: String, autonomieKm: String, vehicleReady: Boolean) {
+    fun consignerVeriteTerrain(socPourcent: String, autonomieKm: String) {
         val soc = socPourcent.trim()
         val autonomie = autonomieKm.trim()
         if (soc.isEmpty() && autonomie.isEmpty()) {
@@ -330,7 +330,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
                         kind = "note",
                         tsWall = "",
                         tsMonoMs = 0L,
-                        vehicleState = if (vehicleReady) "READY" else "non-READY",
+                        vehicleState = "non renseigné",
                         note = parties.joinToString(" ; "),
                     ),
                 )
@@ -343,7 +343,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun consignerEtapeEpb(etape: String, observation: String, vehicleReady: Boolean) {
+    fun consignerEtapeEpb(etape: String, observation: String) {
         val journalCourant = journal
         if (journalCourant == null) {
             ajouterLignes("Non connecté : étape EPB non consignée (aucun journal ouvert).")
@@ -359,7 +359,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
                         kind = "note",
                         tsWall = "",
                         tsMonoMs = 0L,
-                        vehicleState = if (vehicleReady) "READY" else "non-READY",
+                        vehicleState = "non renseigné",
                         note = note,
                     ),
                 )
@@ -372,10 +372,10 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun lancerSnapshotEpb(etape: String, observation: String, vehicleReady: Boolean) {
-        consignerEtapeEpb(etape, observation, vehicleReady)
+    fun lancerSnapshotEpb(etape: String, observation: String) {
+        consignerEtapeEpb(etape, observation)
         val executor = construireExecutor() ?: return
-        demarrerFlux("Snapshot EPB (lecture seule)") { executor.epbObservationSnapshot(vehicleReady) }
+        demarrerFlux("Snapshot EPB (lecture seule)") { executor.epbObservationSnapshot(true) }
     }
 
     fun journalFile(): File? = fichierJournal?.takeIf { it.exists() }
