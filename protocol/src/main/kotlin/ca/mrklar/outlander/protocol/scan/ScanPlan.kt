@@ -27,7 +27,10 @@ import kotlinx.coroutines.launch
 data class ScanConfig(
     val pacingMs: Long = 150,
     val identificationTimeoutMs: Long = 1500,
-    val sweepTimeoutMs: Long = 600,
+    // Balayage en ST 400 ms : l'ELM rend l'invite ~ST après la dernière
+    // trame (3 répondants en fonctionnel) ; 600 ms expirait sur gigue
+    // Bluetooth et ouvrait la cascade STOPPED (séance 2026-10-31).
+    val sweepTimeoutMs: Long = 1200,
     val atrvFloorVolts: Double = 12.0,
     val atrvPollMs: Long = 30_000,
     val maxConsecutiveCanErrors: Int = 3,
@@ -59,6 +62,15 @@ sealed interface ScanEvent {
         val socBrut: Int?,
         val odoKm: Int? = null,
     ) : ScanEvent
+
+    /**
+     * Une cellule lue pendant [ScanExecutor.lireCellules] : [index]
+     * 0..95 = DID `0114` + index chez DB, [brut] big-endian non signé
+     * ou `null` (lecture non positive). Hypothèse de la séance
+     * 2026-10-31 (balayage) : un DID par cellule, mV directs —
+     * candidate, somme vs tension pack encore à vérifier.
+     */
+    data class CelluleLue(val index: Int, val brut: Int?) : ScanEvent
 }
 
 /** Bilan d'un balayage de DID (phase 8). */
@@ -770,6 +782,50 @@ class ScanExecutor(
     }
 
     /**
+     * Lecture des 96 cellules candidates : DID `0114`..`0173` chez DB,
+     * un [ScanEvent.CelluleLue] par cellule dès sa lecture (l'app
+     * remplit le graphique progressivement). Hypothèse issue du
+     * balayage du 2026-10-31 : 81 de ces DID répondaient 3 967-3 979
+     * (mV candidats) au repos, delta 12 ; les 15 manquants tombaient
+     * dans la cascade `STOPPED` du clone. Vérification décisive
+     * encore à faire : somme des 96 vs tension pack `0106`.
+     * Lecture seule, gardes §5.5, ST resserré comme au suivi.
+     */
+    fun lireCellules(vehicleReady: Boolean = true): Flow<ScanEvent> = flow {
+        this@ScanExecutor.vehicleReady = vehicleReady
+        val collecteur = this
+        val emit: suspend (ScanEvent) -> Unit = { collecteur.emit(it) }
+        phaseCourante = "cellules"
+        emit(ScanEvent.PhaseStarted("cellules"))
+        if (gardeAtrv(force = true, emit = emit) &&
+            assurerProtocole(bits29 = true, emit = emit)
+        ) try {
+            pace()
+            nourrirCompteurCan(session.setResponseTimeoutHex("64"))
+            val timeout = config.identificationTimeoutMs
+            for (index in 0 until 96) {
+                if (arrete) break
+                // Une relecture si la première échoue (STOPPED/timeout
+                // du clone) : les 96 DID répondent tous au repos.
+                val brut = lireBrutSuivi(0x0114 + index, timeout, emit)
+                    ?: if (arrete) null else lireBrutSuivi(0x0114 + index, timeout, emit)
+                emit(ScanEvent.CelluleLue(index, brut))
+            }
+        } finally {
+            pace()
+            try {
+                session.setResponseTimeoutHex("FF")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Restitution best-effort, comme au balayage.
+            }
+        }
+        emettreArretSiNecessaire(emit)
+        emit(ScanEvent.PhaseFinished("cellules"))
+    }
+
+    /**
      * Snapshot d'observation EPB en lecture seule : pour chaque cible
      * 29 bits (`0xDB`, `0xDE`, `0xE5`), lectures physiques des DID
      * d'identification `F186`/`F187`/`F189` et des DTC
@@ -799,7 +855,7 @@ class ScanExecutor(
         val timeout = config.identificationTimeoutMs
         if (!assurerProtocole(bits29 = true, emit = emit)) return
         val dejaEmis = mutableSetOf<EcuChannel>()
-        for ((channel, adresse) in CIBLES_29) {
+        for ((channel, adresse) in CIBLES_EPB) {
             if (arrete) return
             val entete = "18DAF1%02X".format(adresse)
             val f186 = lireDid(channel, 0xF186, timeout, emit)
@@ -1107,6 +1163,20 @@ class ScanExecutor(
             EcuChannel.BMU_DB to 0xDB,
             EcuChannel.ECU_DE to 0xDE,
             EcuChannel.ECU_E5 to 0xE5,
+        )
+
+        /**
+         * Cibles des snapshots EPB : [CIBLES_29] plus les autres ECU
+         * logiques vus répondre au balayage fonctionnel du
+         * 2026-10-31 (DA, DC, DD, DF). L'ECU qui porte l'EPB n'est
+         * pas encore identifié ; DB (BMU), DE (OBC) et E5 (inverseur
+         * arrière, F194 « INV-RE ») n'ont rien montré entre états.
+         */
+        val CIBLES_EPB: List<Pair<EcuChannel, Int>> = CIBLES_29 + listOf(
+            EcuChannel.logical29(0xDA) to 0xDA,
+            EcuChannel.logical29(0xDC) to 0xDC,
+            EcuChannel.logical29(0xDD) to 0xDD,
+            EcuChannel.logical29(0xDF) to 0xDF,
         )
 
         /** DID d'identification : 6 nommés, puis le reste de F180–F19F en ordre. */

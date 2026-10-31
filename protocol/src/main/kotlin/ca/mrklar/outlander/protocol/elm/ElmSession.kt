@@ -43,6 +43,8 @@ class ElmSession(
     private val journal: DiscoveryJournal,
     private val transportKind: String,
     private val clockMono: () -> Long = { System.nanoTime() / 1_000_000 },
+    /** Attente maximale de l'invite tardive après timeout/STOPPED (ST FF ≈ 1 s + marge). */
+    private val resyncMs: Long = 1500,
 ) {
 
     private val codec = ElmCodec()
@@ -171,11 +173,49 @@ class ElmSession(
                     .copy(status = ElmStatus.ELM_ERROR)
             }
             else -> codec.classify(command, blocs.joinToString("\r"), dureeDepuis(debut))
+        }.let {
+            // Trames suivies de STOPPED : elles appartiennent à la
+            // commande précédente interrompue, pas à celle-ci.
+            if (it.estStopped() && it.status == ElmStatus.POSITIVE) it.copy(status = ElmStatus.ELM_ERROR) else it
         }
 
         majEtatApresReponse(command, reponse)
         journal.append(enrich(evenement(command, phase, kind, elmAvant, reponse, debut, txAt, octets, rxChunks)))
+        if (!canalFerme && (reponse.status == ElmStatus.TIMEOUT || reponse.estStopped())) {
+            resynchroniser(command, phase)
+        }
         reponse
+    }
+
+    private fun ElmResponse.estStopped(): Boolean =
+        elmTokens.any { it.equals("STOPPED", ignoreCase = true) }
+
+    /**
+     * Après un timeout ou un `STOPPED`, l'invite `>` de l'ELM arrive en
+     * retard. Écrire avant de la recevoir décale toutes les réponses
+     * suivantes d'une requête : chaque envoi interrompt le traitement
+     * en cours et la cascade `STOPPED` ne se résorbe jamais (balayage
+     * du 2026-10-31, `session-20261031-140643`, seq 501-646). On attend
+     * donc ce bloc en retard sans rien écrire, puis on le jette ;
+     * journalisé s'il y avait quelque chose. Sous le [Mutex].
+     */
+    private suspend fun resynchroniser(command: String, phase: String) {
+        val rx = mutableListOf<TxChunk>()
+        val bloc = withTimeoutOrNull(resyncMs) { recevoirBloc(rx) }
+        val jete = bloc.orEmpty() + codec.pending()
+        codec.reset()
+        blocsPrets.clear()
+        if (bloc != null || jete.isNotBlank()) {
+            journal.append(
+                JournalEvent(
+                    phase = phase,
+                    kind = "event",
+                    tsWall = "",
+                    tsMonoMs = clockMono(),
+                    note = "resynchro après $command: invite tardive jetée: ${jete.trim()}",
+                ),
+            )
+        }
     }
 
     /** Prochain bloc complet (prompt reçu), ou null si le canal RX est fermé.

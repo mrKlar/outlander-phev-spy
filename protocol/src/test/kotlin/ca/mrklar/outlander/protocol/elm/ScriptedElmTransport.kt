@@ -58,6 +58,11 @@ class ScriptedElmTransport(exchanges: List<Exchange>) : ElmTransport {
         }
     }
 
+    /** Enfile [texte] hors échange (réponse tardive de l'adaptateur). */
+    fun inject(texte: String) {
+        channel.trySend(texte.toByteArray(Charsets.ISO_8859_1))
+    }
+
     override suspend fun close() {
         synchronized(lock) {
             if (ferme) return

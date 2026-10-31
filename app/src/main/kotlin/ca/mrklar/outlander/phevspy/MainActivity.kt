@@ -321,6 +321,24 @@ private fun EcranSession(vm: SessionViewModel = viewModel()) {
             onClick = { ecranConduite = true },
             modifier = Modifier.padding(top = 4.dp),
         ) { Text("Écran conduite (plein écran)") }
+        OutlinedButton(
+            onClick = { vm.lancerLectureCellules() },
+            enabled = actionsSessionActives(connecte, state.scanRunning),
+            modifier = Modifier.padding(top = 4.dp),
+        ) { Text("Lire les 96 cellules (~1 min)") }
+        val cellulesSession = state.cellulesValeurs.filterNotNull()
+        if (cellulesSession.size >= 2) {
+            Text(
+                "Cellules : ${cellulesSession.size}/96 · min ${cellulesSession.min()} mV · " +
+                    "max ${cellulesSession.max()} mV · Δ ${cellulesSession.max() - cellulesSession.min()} mV · " +
+                    "maj ${state.cellulesMaj ?: "—"}",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            GraphiqueBarresCellules(
+                valeurs = state.cellulesValeurs,
+                modifier = Modifier.fillMaxWidth().height(140.dp).padding(top = 4.dp),
+            )
+        }
         Text(
             state.cellDeltaMv?.let { "Δ $it mV" } ?: "Δ — mV",
             style = MaterialTheme.typography.displayMedium,
@@ -459,6 +477,13 @@ private fun EcranConduite(
 
     fun enV(mv: Int?): String = mv?.let { "%.3f".format(it / 1000.0) } ?: "-.---"
 
+    val cellulesLues = state.cellulesValeurs.filterNotNull()
+    val deltaCellules = if (cellulesLues.size >= 2) {
+        cellulesLues.max() - cellulesLues.min()
+    } else {
+        null
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -487,7 +512,7 @@ private fun EcranConduite(
                 )
             }
             Text(
-                state.cellDeltaMv?.let { "$it mV" } ?: "— mV",
+                (deltaCellules ?: state.cellDeltaMv)?.let { "$it mV" } ?: "— mV",
                 fontSize = 56.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
@@ -495,7 +520,17 @@ private fun EcranConduite(
         }
 
         val points = state.historiqueCellules
-        if (points.size < 2) {
+        if (cellulesLues.size >= 2) {
+            GraphiqueBarresCellules(
+                valeurs = state.cellulesValeurs,
+                modifier = Modifier.fillMaxWidth().weight(1f),
+            )
+            Text(
+                "Une barre par cellule (DID 0114-0173, mV) : " +
+                    "${cellulesLues.size}/96 lues · min en bleu · maj ${state.cellulesMaj ?: "—"}",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        } else if (points.size < 2) {
             Box(
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 contentAlignment = Alignment.Center,
@@ -564,28 +599,45 @@ private fun EcranConduite(
             }
         }
 
-        Text(
-            "min ${enV(state.cellMinMv)} · max ${enV(state.cellMaxMv)} · " +
-                "Δ ${state.cellDeltaMv?.let { "$it mV" } ?: "—"}",
-            fontFamily = FontFamily.Monospace,
-            fontSize = 24.sp,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Text(
-            "Δ session : min ${state.deltaMinSession?.let { "$it mV" } ?: "—"} · " +
-                "max ${state.deltaMaxSession?.let { "$it mV" } ?: "—"}",
-            fontFamily = FontFamily.Monospace,
-            fontSize = 18.sp,
-        )
-        Text(
-            "Barres = plage min→max par lecture (DID 0178/0179, mV " +
-                "candidats). Cellules individuelles : DID non trouvé.",
-            style = MaterialTheme.typography.bodySmall,
-        )
+        if (cellulesLues.size >= 2) {
+            Text(
+                "min ${enV(cellulesLues.min())} · moy ${enV(cellulesLues.average().toInt())} · " +
+                    "max ${enV(cellulesLues.max())} · Δ ${deltaCellules} mV",
+                fontFamily = FontFamily.Monospace,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                "Somme des cellules lues : %.1f V (à comparer au pack)".format(
+                    cellulesLues.sum() / 1000.0,
+                ),
+                fontFamily = FontFamily.Monospace,
+                fontSize = 18.sp,
+            )
+        } else {
+            Text(
+                "min ${enV(state.cellMinMv)} · max ${enV(state.cellMaxMv)} · " +
+                    "Δ ${state.cellDeltaMv?.let { "$it mV" } ?: "—"}",
+                fontFamily = FontFamily.Monospace,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                "Δ session : min ${state.deltaMinSession?.let { "$it mV" } ?: "—"} · " +
+                    "max ${state.deltaMaxSession?.let { "$it mV" } ?: "—"}",
+                fontFamily = FontFamily.Monospace,
+                fontSize = 18.sp,
+            )
+            Text(
+                "Barres = plage min→max par lecture (DID 0178/0179, mV " +
+                    "candidats). Lecture des 96 cellules : bouton ci-dessous.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
 
+        val connecte = state.connectedName != null
         Row(modifier = Modifier.padding(top = 8.dp)) {
-            val connecte = state.connectedName != null
-            if (!state.suiviActif) {
+            if (!state.scanRunning) {
                 Button(
                     onClick = { vm.lancerSuiviCellules() },
                     enabled = actionsSessionActives(connecte, state.scanRunning),
@@ -595,12 +647,71 @@ private fun EcranConduite(
                 Button(
                     onClick = { vm.arreterScan() },
                     modifier = Modifier.weight(1f).padding(end = 4.dp),
-                ) { Text("Arrêter le suivi", fontSize = 18.sp) }
+                ) { Text("Arrêter", fontSize = 18.sp) }
             }
             OutlinedButton(
                 onClick = onRetour,
                 modifier = Modifier.weight(1f).padding(start = 4.dp),
             ) { Text("Retour", fontSize = 18.sp) }
+        }
+        OutlinedButton(
+            onClick = { vm.lancerLectureCellules() },
+            enabled = actionsSessionActives(connecte, state.scanRunning),
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+        ) { Text("Lire les 96 cellules (~1 min)", fontSize = 18.sp) }
+    }
+}
+
+/**
+ * Barres par cellule (façon LeafSpy) : 96 positions DID 0114-0173,
+ * fenêtre d'au moins 60 mV centrée sur les valeurs lues, barre de la
+ * plus basse en bleu, manquantes laissées vides. Axe en volts à gauche.
+ */
+@Composable
+private fun GraphiqueBarresCellules(valeurs: List<Int?>, modifier: Modifier = Modifier) {
+    val lues = valeurs.filterNotNull()
+    if (lues.size < 2) return
+    fun enV(mv: Int): String = "%.3f".format(mv / 1000.0)
+    val gMax = lues.max().toFloat()
+    val gMin = lues.min().toFloat()
+    val centre = (gMax + gMin) / 2f
+    val demiFenetre = maxOf(30f, (gMax - gMin) / 2f + 5f)
+    val haut = centre + demiFenetre
+    val bas = centre - demiFenetre
+    Row(modifier = modifier) {
+        Column(modifier = Modifier.fillMaxHeight()) {
+            Text(enV(haut.toInt()), fontFamily = FontFamily.Monospace, fontSize = 14.sp)
+            Spacer(Modifier.weight(1f))
+            Text(enV(centre.toInt()), fontFamily = FontFamily.Monospace, fontSize = 14.sp)
+            Spacer(Modifier.weight(1f))
+            Text(enV(bas.toInt()), fontFamily = FontFamily.Monospace, fontSize = 14.sp)
+        }
+        val couleurBarre = Color(0xFFD32F2F)
+        val couleurMin = Color(0xFF1565C0)
+        val couleurGrille = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+        Canvas(modifier = Modifier.weight(1f).fillMaxHeight()) {
+            val amplitude = (haut - bas).coerceAtLeast(1f)
+            fun y(mv: Float): Float = size.height * (haut - mv) / amplitude
+            for (f in listOf(0.25f, 0.5f, 0.75f)) {
+                drawLine(
+                    couleurGrille,
+                    Offset(0f, size.height * f),
+                    Offset(size.width, size.height * f),
+                    strokeWidth = 1.5f,
+                )
+            }
+            val pasX = size.width / 96f
+            val largeurBarre = (pasX * 0.75f).coerceAtLeast(2f)
+            valeurs.forEachIndexed { i, mv ->
+                if (mv == null) return@forEachIndexed
+                val x = pasX * (i + 0.5f)
+                drawLine(
+                    if (mv == lues.min()) couleurMin else couleurBarre,
+                    Offset(x, size.height),
+                    Offset(x, y(mv.toFloat())),
+                    strokeWidth = largeurBarre,
+                )
+            }
         }
     }
 }

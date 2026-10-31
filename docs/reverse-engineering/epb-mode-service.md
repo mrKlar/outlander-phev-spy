@@ -153,3 +153,34 @@ conditions sont réunies :
 À défaut, le volet reste un guide manuel + lectures d'état, ce qui
 est déjà utile et ne met ni le véhicule ni son propriétaire en
 danger.
+
+## Topologie CAN et point d'écoute (pistes externes, 2026-10-31)
+
+Notre accès actuel est du diagnostic par la prise OBD-II
+(requêtes/réponses via la passerelle), pas de l'écoute passive.
+Deux pistes rapportées au propriétaire, à vérifier avant tout
+branchement :
+
+- Guide d'installation Fortin n° 119701 (EVO-ONE, Outlander PHEV
+  2024-2025), PDF récupéré et lu le 2026-10-31 : un bus CAN est
+  accessible au BCM (à gauche de la colonne de direction),
+  connecteur gris 40 broches, CAN Low = fil lavande/rose, CAN High
+  = fil lavande/bleu. Numéros de broches à confirmer visuellement
+  sur le schéma avant tout usage.
+- Rapporté sans vérification de notre part : architecture à
+  passerelle « 8CH CAN Gateway » (Mitsubishi Tech Info) et ABS sur
+  « Chassis CAN 2 et 4 ». À confirmer par la documentation de
+  service du millésime.
+
+Le WiCAN-PRO Advanced commandé sait enregistrer des trames CAN
+brutes (MDF4/BLF/candump/ASC sur microSD, page produit MeatPi
+consultée le 2026-10-31). Plan d'écoute, si le propriétaire
+l'approuve : d'abord écoute passive aux broches OBD-II pendant la
+séquence manuelle (états A/B), puis — seulement si les trames EPB
+sont filtrées par la passerelle — écoute sur le bus BCM ou châssis
+via un faisceau en T du commerce (piste rapportée : Fortin
+THAR-NIS7, compatibilité avec le véhicule et adaptation au WiCAN à
+valider au multimètre avant branchement). Conditions inchangées :
+listen-only, aucune trame émise, aucune terminaison ajoutée,
+aucun fil d'origine coupé, aucun calculateur débranché sous
+tension.

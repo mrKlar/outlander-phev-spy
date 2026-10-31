@@ -72,8 +72,11 @@ object AffineDecoder : SignalDecoder {
  * Registre des signaux connus (spec §8.3 et §3.1 F4).
  *
  * Promotion seulement par corrélation sur le véhicule cible (§8.2) :
- * seul l'odomètre (F0D0, séance 2026-10-31) est corrélé à ce jour ;
- * tout le reste reste [SignalConfidence.COMMUNAUTAIRE_NON_VALIDE].
+ * corrélés le 2026-10-31 — odomètre F0D0 (compteur) et SOC 01D1
+ * (barres 16/16 puis 13/16). Tension pack 0106 et cellules
+ * 0178/0179 ont une échelle cohérente avec les cellules 0114-0173,
+ * mais le tableau de bord n'affiche rien à quoi les corréler : ils
+ * restent [SignalConfidence.COMMUNAUTAIRE_NON_VALIDE], formule sourcée.
  */
 object KnownSignals {
 
@@ -81,26 +84,30 @@ object KnownSignals {
      * DID Gen4 du profil communautaire WiCAN #468 (campagne 1) :
      * un DID = une définition, canal = répondant attendu
      * ([EcuChannel.BMU_DB], [EcuChannel.ECU_DE],
-     * [EcuChannel.ECU_E5]). Aucune équation encodée : la
-     * sémantique des indices « B » de Car Scanner par rapport à
-     * notre charge après en-tête `62 XX XX` reste à valider sur
-     * le véhicule cible. Identifiants : `bmu.<nom>.didXXXX`
+     * [EcuChannel.ECU_E5]). Équations encodées uniquement pour les
+     * DID corrélés sur le véhicule cible (2026-10-31) ; les autres
+     * restent en brut journalisé. Identifiants : `bmu.<nom>.didXXXX`
      * pour DB et `ecu.<nom>.didXXXX` pour DE/E5 ; les ids des
      * DID déjà présents restent inchangés.
      */
     val gen4Community: List<SignalDefinition> = listOf(
         SignalDefinition(
             id = "bmu.soc.did01d1",
-            label = "SOC (piste)",
+            label = "SOC",
             channel = EcuChannel.BMU_DB,
             requestHex = "2201D1",
+            byteOffset = 0,
+            byteLength = 2,
+            scale = 100.0 / 176.0,
+            offset = 0.0,
             unit = "%",
-            source = SOURCE_GEN4,
-            confidence = SignalConfidence.COMMUNAUTAIRE_NON_VALIDE,
+            source = "séances 2026-10-31 (session-20261031-140643): brut 176 à 16/16 barres, 143-145 à 13/16; " +
+                "dénominateur 176 = DID 01D0 constant (pleine échelle candidate)",
+            confidence = SignalConfidence.CORRELE_TABLEAU_DE_BORD,
         ),
         SignalDefinition(
             id = "bmu.socmax.did01d0",
-            label = "SOC_MAX rapporté (non validé)",
+            label = "Pleine échelle SOC (constante 176 observée)",
             channel = EcuChannel.BMU_DB,
             requestHex = "2201D0",
             unit = "?",
@@ -109,29 +116,44 @@ object KnownSignals {
         ),
         SignalDefinition(
             id = "bmu.hvVoltage.did0106",
-            label = "Tension HV (piste)",
+            label = "Tension HV",
             channel = EcuChannel.BMU_DB,
             requestHex = "220106",
+            byteOffset = 0,
+            byteLength = 2,
+            scale = 0.01,
+            offset = 0.0,
             unit = "V",
-            source = SOURCE_GEN4,
+            source = "session-20261031-140643: moyenne de 81 cellules 0114-0173 × 96 = pack à 0,01 V près " +
+                "(cohérence interne BMU, sans affichage au tableau de bord)",
             confidence = SignalConfidence.COMMUNAUTAIRE_NON_VALIDE,
         ),
         SignalDefinition(
             id = "bmu.cellMax.did0178",
-            label = "Tension cellule max (piste)",
+            label = "Tension cellule max",
             channel = EcuChannel.BMU_DB,
             requestHex = "220178",
+            byteOffset = 0,
+            byteLength = 2,
+            scale = 0.001,
+            offset = 0.0,
             unit = "V",
-            source = SOURCE_GEN4,
+            source = "session-20261031-140643: encadre pack/96 avec 0179 à deux SOC; " +
+                "cellules individuelles 0114-0173 dans la même échelle mV",
             confidence = SignalConfidence.COMMUNAUTAIRE_NON_VALIDE,
         ),
         SignalDefinition(
             id = "bmu.cellMin.did0179",
-            label = "Tension cellule min (piste)",
+            label = "Tension cellule min",
             channel = EcuChannel.BMU_DB,
             requestHex = "220179",
+            byteOffset = 0,
+            byteLength = 2,
+            scale = 0.001,
+            offset = 0.0,
             unit = "V",
-            source = SOURCE_GEN4,
+            source = "session-20261031-140643: encadre pack/96 avec 0178 à deux SOC; " +
+                "cellules individuelles 0114-0173 dans la même échelle mV",
             confidence = SignalConfidence.COMMUNAUTAIRE_NON_VALIDE,
         ),
         SignalDefinition(

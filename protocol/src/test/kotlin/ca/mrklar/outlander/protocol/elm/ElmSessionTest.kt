@@ -4,6 +4,8 @@ import ca.mrklar.outlander.protocol.journal.InMemoryJournal
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -135,6 +137,46 @@ class ElmSessionTest {
         }
         assertEquals(5, journal.events.size)
 
+        session.close()
+    }
+
+    // (4b) Resynchro (session-20261031-140643 seq 501-503) : invite
+    // tardive après timeout jetée avant la commande suivante, qui reçoit
+    // sa propre réponse au lieu de celle de la précédente.
+    @Test
+    fun resynchroApresTimeout() = runTest(UnconfinedTestDispatcher()) {
+        val transport = ScriptedElmTransport(
+            listOf(
+                exchange("220162", "18 DA F1 DB 05 62 01 62 0F 7E \r"),
+                exchange("220163", "18 DA F1 DB 05 62 01 63 0F 89 \r\r>"),
+            ),
+        )
+        val journal = InMemoryJournal()
+        val session = session(transport, journal)
+        backgroundScope.launch {
+            delay(400)
+            transport.inject("\r>")
+        }
+
+        assertEquals(ElmStatus.TIMEOUT, session.transact("220162", timeoutMs = 300).status)
+        val suivante = session.transact("220163", timeoutMs = 300)
+
+        assertEquals(ElmStatus.POSITIVE, suivante.status)
+        assertTrue(suivante.rawText.contains("62 01 63"), suivante.rawText)
+        assertTrue(journal.events.any { it.note?.startsWith("resynchro après 220162") == true })
+        session.close()
+    }
+
+    // (4c) Trames suivies de STOPPED : elles sont à la commande
+    // interrompue, la réponse n'est pas positive.
+    @Test
+    fun tramesAvantStoppedPasPositives() = runTest(UnconfinedTestDispatcher()) {
+        val transport = ScriptedElmTransport(
+            listOf(exchange("220164", "18 DA F1 DB 05 62 01 63 0F 89 \rSTOPPED\r\r>")),
+        )
+        val session = session(transport, InMemoryJournal())
+
+        assertEquals(ElmStatus.ELM_ERROR, session.transact("220164", timeoutMs = 300).status)
         session.close()
     }
 

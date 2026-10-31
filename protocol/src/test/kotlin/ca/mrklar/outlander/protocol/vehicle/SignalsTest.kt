@@ -135,10 +135,15 @@ class SignalsTest {
         val donnees = ByteArray(32) { (it * 7 + 3).toByte() }
 
         assertEquals(16, KnownSignals.gen4Community.size)
-        // Exception promue : l'odomètre F0D0 (séance 2026-10-31,
-        // confirmé au compteur) porte la seule équation Gen4.
+        // Exceptions promues (séances 2026-10-31) : odomètre F0D0
+        // (compteur), pack 0106 et cellules 0178/0179 (somme des 96
+        // cellules), SOC 01D1 (barres 16/16 puis 13/16).
+        val promus = setOf(
+            "bmu.unknown.didf0d0", "bmu.soc.did01d1", "bmu.hvVoltage.did0106",
+            "bmu.cellMax.did0178", "bmu.cellMin.did0179",
+        )
         for (definition in KnownSignals.gen4Community) {
-            if (definition.id == "bmu.unknown.didf0d0") continue
+            if (definition.id in promus) continue
             assertNull(definition.byteOffset, definition.id)
             assertNull(definition.byteLength, definition.id)
             assertNull(definition.scale, definition.id)
@@ -150,6 +155,32 @@ class SignalsTest {
         assertEquals(
             33267.0,
             AffineDecoder.decode(odometre, byteArrayOf(0x00, 0x81.toByte(), 0xF3.toByte())),
+        )
+        // Valeurs de séance : pack 0x9B8E = 398,22 V ; cellule max
+        // 0x1036 = 4,150 V ; SOC brut 176 = 100 % (pleine échelle 01D0).
+        assertEquals(
+            398.22,
+            AffineDecoder.decode(
+                assertNotNull(KnownSignals.byId("bmu.hvVoltage.did0106")),
+                byteArrayOf(0x9B.toByte(), 0x8E.toByte()),
+            )!!,
+            1e-9,
+        )
+        assertEquals(
+            4.150,
+            AffineDecoder.decode(
+                assertNotNull(KnownSignals.byId("bmu.cellMax.did0178")),
+                byteArrayOf(0x10, 0x36),
+            )!!,
+            1e-9,
+        )
+        assertEquals(
+            100.0,
+            AffineDecoder.decode(
+                assertNotNull(KnownSignals.byId("bmu.soc.did01d1")),
+                byteArrayOf(0x00, 0xB0.toByte()),
+            )!!,
+            1e-9,
         )
     }
 
@@ -234,11 +265,14 @@ class SignalsTest {
         )
         assertEquals(20, KnownSignals.all.map { it.id }.toSet().size)
 
+        val promus = setOf(
+            "bmu.unknown.didf0d0", "bmu.soc.did01d1",
+        )
         for (definition in KnownSignals.all) {
             assertTrue(!definition.id.contains("soh"), definition.id)
-            // Seule promotion : odomètre F0D0 corrélé au compteur
-            // (séance 2026-10-31). Tout le reste reste communautaire.
-            val attendue = if (definition.id == "bmu.unknown.didf0d0") {
+            // Promotions des séances 2026-10-31 seulement ; tout le
+            // reste communautaire non validé.
+            val attendue = if (definition.id in promus) {
                 SignalConfidence.CORRELE_TABLEAU_DE_BORD
             } else {
                 SignalConfidence.COMMUNAUTAIRE_NON_VALIDE
@@ -262,10 +296,23 @@ class SignalsTest {
             assertEquals(canauxAttendus[definition.requestHex], definition.channel, definition.id)
             assertTrue(definition.requestHex.startsWith("22"), definition.id)
             assertEquals(
-                if (definition.id == "bmu.unknown.didf0d0") {
-                    "séance 2026-10-31 (33 267 km lus, confirmé au compteur par le propriétaire)"
-                } else {
-                    "WiCAN #468 @amwalters 2025-10-31 (profil Gen4, non validé)"
+                when (definition.id) {
+                    "bmu.unknown.didf0d0" ->
+                        "séance 2026-10-31 (33 267 km lus, confirmé au compteur par le propriétaire)"
+                    "bmu.soc.did01d1" ->
+                        "séances 2026-10-31 (session-20261031-140643): brut 176 à 16/16 barres, 143-145 à 13/16; " +
+                            "dénominateur 176 = DID 01D0 constant (pleine échelle candidate)"
+                    "bmu.hvVoltage.did0106" ->
+                        "session-20261031-140643: moyenne de 81 cellules 0114-0173 × 96 = pack à 0,01 V près " +
+                            "(cohérence interne BMU, sans affichage au tableau de bord)"
+                    "bmu.cellMax.did0178" ->
+                        "session-20261031-140643: encadre pack/96 avec 0179 à deux SOC; " +
+                            "cellules individuelles 0114-0173 dans la même échelle mV"
+                    "bmu.cellMin.did0179" ->
+                        "session-20261031-140643: encadre pack/96 avec 0178 à deux SOC; " +
+                            "cellules individuelles 0114-0173 dans la même échelle mV"
+                    else ->
+                        "WiCAN #468 @amwalters 2025-10-31 (profil Gen4, non validé)"
                 },
                 definition.source,
                 definition.id,
@@ -302,9 +349,9 @@ class SignalsTest {
             attendu,
             KnownSignals.gen4Community.map { Triple(it.id, it.requestHex, it.unit) },
         )
-        assertEquals("SOC (piste)", assertNotNull(KnownSignals.byId("bmu.soc.did01d1")).label)
+        assertEquals("SOC", assertNotNull(KnownSignals.byId("bmu.soc.did01d1")).label)
         assertEquals(
-            "SOC_MAX rapporté (non validé)",
+            "Pleine échelle SOC (constante 176 observée)",
             assertNotNull(KnownSignals.byId("bmu.socmax.did01d0")).label,
         )
         assertEquals(

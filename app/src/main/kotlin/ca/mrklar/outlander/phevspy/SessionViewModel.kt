@@ -61,6 +61,10 @@ data class SessionUiState(
     val suiviMaj: String? = null,
     val suiviCycles: Int = 0,
     val odoKm: Int? = null,
+    // Lecture des 96 cellules (DID 0114..0173, mV candidats confirmés
+    // par somme vs pack le 2026-10-31) : brut par index, null = pas lu.
+    val cellulesValeurs: List<Int?> = emptyList(),
+    val cellulesMaj: String? = null,
 )
 
 /**
@@ -398,6 +402,58 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    /**
+     * Lecture des 96 cellules candidates (DID 0114..0173 chez DB) :
+     * remplit [SessionUiState.cellulesValeurs] au fur et à mesure.
+     * Même job/arrêt que le scan ; environ une minute sur le clone.
+     */
+    fun lancerLectureCellules() {
+        val executor = construireExecutor() ?: return
+        if (scanJob?.isActive == true) {
+            ajouterLignes("Lecture cellules : un scan est déjà en cours.")
+            return
+        }
+        _state.update {
+            it.copy(
+                scanRunning = true,
+                error = null,
+                cellulesValeurs = List<Int?>(96) { null },
+                cellulesMaj = null,
+            )
+        }
+        ajouterLignes("Démarrage : lecture des 96 cellules (DID 0114-0173, lecture seule).")
+        scanJob = viewModelScope.launch {
+            try {
+                executor.lireCellules(true).collect { evenement ->
+                    if (evenement is ScanEvent.CelluleLue) {
+                        _state.update { etat ->
+                            val valeurs = etat.cellulesValeurs.toMutableList()
+                            while (valeurs.size < 96) valeurs += null
+                            valeurs[evenement.index] = evenement.brut
+                            etat.copy(
+                                cellulesValeurs = valeurs,
+                                cellulesMaj = LocalTime.now().format(FORMAT_HEURE),
+                            )
+                        }
+                    } else {
+                        ajouterLignes(formater(evenement))
+                    }
+                }
+                val lues = _state.value.cellulesValeurs.count { it != null }
+                ajouterLignes("Lecture cellules terminée : $lues/96 valeurs.")
+            } catch (e: CancellationException) {
+                ajouterLignes("Lecture cellules interrompue.")
+                throw e
+            } catch (e: RequestRefusedException) {
+                ajouterLignes("Refus du garde lecture seule : ${e.message ?: "refus"}")
+            } catch (e: Throwable) {
+                signalerErreur("Lecture cellules : ${e.message ?: e}")
+            } finally {
+                _state.update { it.copy(scanRunning = false) }
+            }
+        }
+    }
+
     fun arreterScan() {
         scanJob?.cancel()
         scanJob = null
@@ -590,6 +646,8 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         is ScanEvent.Cellules ->
             "Cellules : max=${evenement.maxBrut} min=${evenement.minBrut} " +
                 "pack=${evenement.packBrut} soc=${evenement.socBrut} (bruts)"
+        is ScanEvent.CelluleLue ->
+            "Cellule ${evenement.index + 1}/96 : ${evenement.brut ?: "—"}"
     }
 
     private companion object {

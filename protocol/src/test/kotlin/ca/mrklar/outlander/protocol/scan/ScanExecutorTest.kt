@@ -192,12 +192,13 @@ class ScanExecutorTest {
             "repondants=$repondants",
         )
 
-        // Probe Gen4 principale : positive, jamais décodée (aucune équation encodée).
+        // Probe Gen4 principale : positive, décodée depuis la promotion
+        // SOC de 2026-10-31 (brut 100 × 100/176).
         val probeSoc = evenements.filterIsInstance<ScanEvent.ProbeResult>()
             .singleOrNull { it.signalId == "bmu.soc.did01d1" }
         assertNotNull(probeSoc)
         assertTrue(probeSoc.reply.startsWith("positive"), "reply=${probeSoc.reply}")
-        assertNull(probeSoc.decoded)
+        assertEquals(100.0 * 100.0 / 176.0, probeSoc.decoded!!, 1e-9)
 
         // Toutes les écritures prévues consommées, dans l'ordre.
         assertTrue(transport.mismatches.isEmpty(), "mismatches=${transport.mismatches}")
@@ -491,7 +492,7 @@ class ScanExecutorTest {
             .singleOrNull { it.signalId == "bmu.soc.did01d1" }
         assertNotNull(probeSoc)
         assertTrue(probeSoc.reply.startsWith("positive"), "reply=${probeSoc.reply}")
-        assertNull(probeSoc.decoded)
+        assertEquals(100.0 * 100.0 / 176.0, probeSoc.decoded!!, 1e-9)
         assertFalse(
             transport.writtenTexts.any { it.trim() == "3E00" },
             "écritures=${transport.writtenTexts}",
@@ -665,6 +666,37 @@ class ScanExecutorTest {
         session.close()
     }
 
+    // Lecture des 96 cellules candidates (DID 0114..0173 chez DB,
+    // hypothese du balayage 2026-10-31) : premier DID en fonctionnel,
+    // suite en physique, un evenement par cellule.
+    @Test
+    fun lireCellules96Did() = runTest(UnconfinedTestDispatcher()) {
+        val script = buildList {
+            add(atrv()); add(ok("ATSP7")); add(ok("ATCP18"))
+            add(ok("ATST64"))
+            addAll(progFonc29())
+            add(ex("220114", "18 DA F1 DB 05 62 01 14 0F 87 \r>"))
+            addAll(prog29("DB"))
+            for (did in 0x0115..0x0173) {
+                add(ex("22%04X".format(did), "18 DA F1 DB 05 62 %02X %02X 0F 80 \r>".format(did shr 8, did and 0xFF)))
+            }
+            add(ok("ATSTFF"))
+        }
+        val transport = ScriptedElmTransport(script)
+        val journal = InMemoryJournal()
+        val (session, executor) = executor(transport, journal)
+
+        val evenements = executor.lireCellules().toList()
+
+        val lues = evenements.filterIsInstance<ScanEvent.CelluleLue>()
+        assertEquals(96, lues.size, "evenements=$evenements")
+        assertEquals(ScanEvent.CelluleLue(0, 0x0F87), lues.first())
+        assertEquals(ScanEvent.CelluleLue(95, 0x0F80), lues.last())
+        assertTrue(transport.mismatches.isEmpty(), "mismatches=${transport.mismatches}")
+
+        session.close()
+    }
+
     // EPB observation : snapshot lecture seule (F186/F187/F189 + DTC, puis Gen4)
     // -----------------------------------------------------------------------
 
@@ -680,11 +712,12 @@ class ScanExecutorTest {
             add(ex("22F189", "18DAF1DB 03 7F 22 31\r>"))
             add(ex("1901FF", "18DAF1DB 05 59 01 FF 00 00\r>"))
             add(nd("1902FF")); add(nd("190A"))
-            // DE puis E5 : six lectures muettes chacun.
-            addAll(prog29("DE"))
-            for (r in listOf("22F186", "22F187", "22F189", "1901FF", "1902FF", "190A")) add(nd(r))
-            addAll(prog29("E5"))
-            for (r in listOf("22F186", "22F187", "22F189", "1901FF", "1902FF", "190A")) add(nd(r))
+            // DE, E5 puis cibles EPB elargies (DA/DC/DD/DF) : six
+            // lectures muettes chacune.
+            for (addr in listOf("DE", "E5", "DA", "DC", "DD", "DF")) {
+                addAll(prog29(addr))
+                for (r in listOf("22F186", "22F187", "22F189", "1901FF", "1902FF", "190A")) add(nd(r))
+            }
             // Délégation à corpsGen4 : DB répondant → 8 DID en physique.
             addAll(prog29("DB"))
             for (r in listOf("2201D1", "2201D0", "220106", "220178", "220179", "22010B", "22022A", "22F0D0")) {
@@ -735,7 +768,10 @@ class ScanExecutorTest {
                     "F189=no_data, DTC01=no_data, DTC02=no_data, DTC0A=no_data",
                 "EPB snapshot 18DAF1E5: F186=no_data, F187=no_data, " +
                     "F189=no_data, DTC01=no_data, DTC02=no_data, DTC0A=no_data",
-            ),
+            ) + listOf("DA", "DC", "DD", "DF").map { adresse ->
+                "EPB snapshot 18DAF1$adresse: F186=no_data, F187=no_data, " +
+                    "F189=no_data, DTC01=no_data, DTC02=no_data, DTC0A=no_data"
+            },
             notes,
         )
 
