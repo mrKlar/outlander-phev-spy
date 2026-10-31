@@ -660,6 +660,69 @@ class ScanExecutor(
         emit(ScanEvent.PhaseFinished("did-gen4"))
     }
 
+    /**
+     * Snapshot d'observation EPB en lecture seule : pour chaque cible
+     * 29 bits (`0xDB`, `0xDE`, `0xE5`), lectures physiques des DID
+     * d'identification `F186`/`F187`/`F189` et des DTC
+     * `1901FF`/`1902FF`/`190A`, puis [corpsGen4]. Un canal dont une
+     * de ces lectures répond positif ou négatif est inscrit parmi les
+     * répondants et émet [ScanEvent.EcuResponded] au plus une fois
+     * dans ce snapshot ; une [ScanEvent.Note] de synthèse par canal
+     * réutilise [resumeReply]. [corpsGen4] n'impose pas de phase :
+     * appelé ici, ses lectures restent journalisées en
+     * `epb-observation`. Aucun actionnement : seules les lectures
+     * déjà gardées par [lireDid] et [appelUdsAvecRetente] sont émises.
+     */
+    fun epbObservationSnapshot(vehicleReady: Boolean = true): Flow<ScanEvent> = flow {
+        this@ScanExecutor.vehicleReady = vehicleReady
+        val collecteur = this
+        val emit: suspend (ScanEvent) -> Unit = { collecteur.emit(it) }
+        phaseCourante = "epb-observation"
+        emit(ScanEvent.PhaseStarted("epb-observation"))
+        if (gardeAtrv(force = true, emit = emit)) {
+            corpsEpbObservation(emit)
+        }
+        emettreArretSiNecessaire(emit)
+        emit(ScanEvent.PhaseFinished("epb-observation"))
+    }
+
+    private suspend fun corpsEpbObservation(emit: suspend (ScanEvent) -> Unit) {
+        val timeout = config.identificationTimeoutMs
+        if (!assurerProtocole(bits29 = true, emit = emit)) return
+        val dejaEmis = mutableSetOf<EcuChannel>()
+        for ((channel, adresse) in CIBLES_29) {
+            if (arrete) return
+            val entete = "18DAF1%02X".format(adresse)
+            val f186 = lireDid(channel, 0xF186, timeout, emit)
+            val f187 = lireDid(channel, 0xF187, timeout, emit)
+            val f189 = lireDid(channel, 0xF189, timeout, emit)
+            val dtc01 = appelUdsAvecRetente("1901FF", emit) {
+                uds.readDtc(channel, 0x01, 0xFF, timeoutMs = timeout, phase = phaseCourante)
+            }
+            val dtc02 = appelUdsAvecRetente("1902FF", emit) {
+                uds.readDtc(channel, 0x02, 0xFF, timeoutMs = timeout, phase = phaseCourante)
+            }
+            val dtc0a = appelUdsAvecRetente("190A", emit) {
+                uds.readDtc(channel, 0x0A, null, timeoutMs = timeout, phase = phaseCourante)
+            }
+            val reponses = listOf(f186, f187, f189, dtc01, dtc02, dtc0a)
+            if (reponses.any { it is UdsReply.Positive || it is UdsReply.Negative } &&
+                dejaEmis.add(channel)
+            ) {
+                canauxRepondants += channel
+                emit(ScanEvent.EcuResponded(phaseCourante, entete))
+            }
+            val note = "EPB snapshot $entete: F186=${resumeReply(f186)}, " +
+                "F187=${resumeReply(f187)}, F189=${resumeReply(f189)}, " +
+                "DTC01=${resumeReply(dtc01)}, DTC02=${resumeReply(dtc02)}, " +
+                "DTC0A=${resumeReply(dtc0a)}"
+            journalNote(note)
+            emit(ScanEvent.Note(note))
+            if (arrete) return
+        }
+        corpsGen4(emit)
+    }
+
     private suspend fun corpsGen4(
         emit: suspend (ScanEvent) -> Unit,
     ) {

@@ -607,4 +607,106 @@ class ScanExecutorTest {
 
         session.close()
     }
+
+    // -----------------------------------------------------------------------
+    // EPB observation : snapshot lecture seule (F186/F187/F189 + DTC, puis Gen4)
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun snapshotEpbLectureSeule() = runTest(UnconfinedTestDispatcher()) {
+        val script = buildList {
+            add(atrv()); add(ok("ATSP7")); add(ok("ATCP18"))
+            // DB : F186 positif (1 octet), F187 no_data, F189 NRC 31,
+            // DTC01 positif (59 01 FF 00 00 → 3 octets après l'en-tête), DTC02/0A no_data.
+            addAll(prog29("DB"))
+            add(ex("22F186", "18DAF1DB 04 62 F1 86 01\r>"))
+            add(nd("22F187"))
+            add(ex("22F189", "18DAF1DB 03 7F 22 31\r>"))
+            add(ex("1901FF", "18DAF1DB 05 59 01 FF 00 00\r>"))
+            add(nd("1902FF")); add(nd("190A"))
+            // DE puis E5 : six lectures muettes chacun.
+            addAll(prog29("DE"))
+            for (r in listOf("22F186", "22F187", "22F189", "1901FF", "1902FF", "190A")) add(nd(r))
+            addAll(prog29("E5"))
+            for (r in listOf("22F186", "22F187", "22F189", "1901FF", "1902FF", "190A")) add(nd(r))
+            // Délégation à corpsGen4 : DB répondant → 8 DID en physique.
+            addAll(prog29("DB"))
+            for (r in listOf("2201D1", "2201D0", "220106", "220178", "220179", "22010B", "22022A", "22F0D0")) {
+                add(nd(r))
+            }
+            // E5 non répondant : fonctionnel (programmation ObdClient), puis physique.
+            add(ok("ATSH DB 33 F1")); add(ok("ATFCSM0")); add(nd("220112"))
+            addAll(prog29("E5")); add(nd("220112"))
+            // DE non répondant : fonctionnel déjà programmé, puis physique.
+            add(nd("22011A")); addAll(prog29("DE")); add(nd("22011A"))
+            for (r in listOf("220126", "22011C", "220119", "220113", "220107", "220105")) {
+                add(nd(r)); add(nd(r))
+            }
+        }
+        val transport = ScriptedElmTransport(script)
+        val journal = InMemoryJournal()
+        val (session, executor) = executor(transport, journal)
+
+        val evenements = executor.epbObservationSnapshot().toList()
+
+        assertEquals(
+            listOf("epb-observation"),
+            evenements.filterIsInstance<ScanEvent.PhaseStarted>().map { it.phase },
+        )
+        assertEquals(
+            listOf("epb-observation"),
+            evenements.filterIsInstance<ScanEvent.PhaseFinished>().map { it.phase },
+        )
+        assertTrue(evenements.none { it is ScanEvent.Stopped }, "evenements=$evenements")
+
+        // DB seul répondant, au plus une fois dans le snapshot.
+        val repondants = evenements.filterIsInstance<ScanEvent.EcuResponded>()
+        assertEquals(
+            listOf("epb-observation" to "18DAF1DB"),
+            repondants.map { it.phase to it.headerHex },
+            "repondants=$repondants",
+        )
+
+        // Notes de synthèse stables, une par canal, résumés réutilisés.
+        val notes = evenements.filterIsInstance<ScanEvent.Note>()
+            .map { it.message }
+            .filter { it.startsWith("EPB snapshot") }
+        assertEquals(
+            listOf(
+                "EPB snapshot 18DAF1DB: F186=positive:1octets, F187=no_data, " +
+                    "F189=nrc:31, DTC01=positive:3octets, DTC02=no_data, DTC0A=no_data",
+                "EPB snapshot 18DAF1DE: F186=no_data, F187=no_data, " +
+                    "F189=no_data, DTC01=no_data, DTC02=no_data, DTC0A=no_data",
+                "EPB snapshot 18DAF1E5: F186=no_data, F187=no_data, " +
+                    "F189=no_data, DTC01=no_data, DTC02=no_data, DTC0A=no_data",
+            ),
+            notes,
+        )
+
+        // corpsGen4 bien délégué : un ProbeResult par définition Gen4 (16).
+        assertEquals(
+            16,
+            evenements.filterIsInstance<ScanEvent.ProbeResult>().size,
+            "evenements=$evenements",
+        )
+
+        assertTrue(transport.mismatches.isEmpty(), "mismatches=${transport.mismatches}")
+        assertEquals(script.size, transport.writtenTexts.size)
+
+        // Sécurité : rejeu des écritures non-AT dans le garde, et aucun
+        // premier octet véhicule d'actionnement (27, 2E, 2F, 31, 14).
+        assertEcrituresAutorisees(transport)
+        for (ecriture in transport.writtenTexts) {
+            val texte = ecriture.trim()
+            if (texte.startsWith("AT") || texte.startsWith("ST")) continue
+            val premierOctet = texte.filterNot { it.isWhitespace() }
+                .uppercase().substring(0, 2)
+            assertFalse(
+                premierOctet in setOf("27", "2E", "2F", "31", "14"),
+                "premier octet interdit: « $ecriture »",
+            )
+        }
+
+        session.close()
+    }
 }

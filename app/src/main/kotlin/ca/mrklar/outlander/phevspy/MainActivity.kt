@@ -80,6 +80,9 @@ private fun EcranSession(vm: SessionViewModel = viewModel()) {
     var soc by rememberSaveable { mutableStateOf("") }
     var autonomie by rememberSaveable { mutableStateOf("") }
     var saisieConsole by rememberSaveable { mutableStateOf("") }
+    var securiseRoues by rememberSaveable { mutableStateOf(false) }
+    var etapeEpb by rememberSaveable { mutableStateOf("Repos, EPB serré") }
+    var observationEpb by rememberSaveable { mutableStateOf("") }
     var cibleCle by rememberSaveable { mutableStateOf("DB") }
     val cible = when (cibleCle) {
         "DE" -> EcuChannel.ECU_DE
@@ -283,6 +286,48 @@ private fun EcranSession(vm: SessionViewModel = viewModel()) {
             enabled = connecte || state.connectingName != null,
             modifier = Modifier.padding(top = 4.dp),
         ) { Text("Déconnecter") }
+
+        Spacer(Modifier.height(16.dp))
+        Text("EPB — observation du mode service (manuel)", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "L'app ne commande pas les freins. Tu exécutes toi-même ta séquence " +
+                "manuelle connue; l'app capture seulement les états en lecture " +
+                "seule. Véhicule sécurisé; ne jamais se placer sous un véhicule " +
+                "non supporté.",
+        )
+        LigneCase("Véhicule sécurisé pour travailler autour des roues arrière", securiseRoues) {
+            securiseRoues = it
+        }
+        listOf(
+            "Repos, EPB serré",
+            "Repos, EPB desserré",
+            "Après mon entrée manuelle en maintenance",
+            "En maintenance (+2 min)",
+            "Après ma sortie manuelle",
+            "Après 2 applications/libérations normales",
+        ).forEach { etape ->
+            FilterChip(
+                selected = etapeEpb == etape,
+                onClick = { etapeEpb = etape },
+                label = { Text(etape) },
+                modifier = Modifier.padding(vertical = 2.dp),
+            )
+        }
+        OutlinedTextField(
+            value = observationEpb,
+            onValueChange = { observationEpb = it },
+            label = { Text("Voyants, messages, bruits observés") },
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+        )
+        Button(
+            onClick = { vm.lancerSnapshotEpb(etapeEpb, observationEpb, ready) },
+            enabled = connecte && dehors && stationne && securiseRoues && !state.scanRunning,
+            modifier = Modifier.padding(top = 4.dp),
+        ) { Text("Capturer cet état (lecture seule)") }
+        Text(
+            "Refaire la capture à chaque étape sans déconnecter; exporter le journal à la fin.",
+            style = MaterialTheme.typography.bodySmall,
+        )
 
         Spacer(Modifier.height(16.dp))
         Text("Sortie", style = MaterialTheme.typography.titleMedium)

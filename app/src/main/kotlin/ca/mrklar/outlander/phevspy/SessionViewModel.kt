@@ -343,6 +343,41 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun consignerEtapeEpb(etape: String, observation: String, vehicleReady: Boolean) {
+        val journalCourant = journal
+        if (journalCourant == null) {
+            ajouterLignes("Non connecté : étape EPB non consignée (aucun journal ouvert).")
+            return
+        }
+        val note = "étape: ${etape.trim()}; observation: ${observation.trim()}"
+        viewModelScope.launch {
+            try {
+                // tsWall/tsMonoMs sont remplacés par le journal à l'append (Journal.kt).
+                journalCourant.append(
+                    JournalEvent(
+                        phase = "epb-observation",
+                        kind = "note",
+                        tsWall = "",
+                        tsMonoMs = 0L,
+                        vehicleState = if (vehicleReady) "READY" else "non-READY",
+                        note = note,
+                    ),
+                )
+                ajouterLignes("Étape EPB consignée : $note")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                ajouterLignes("Étape EPB : échec d'écriture (${e.message ?: e}).")
+            }
+        }
+    }
+
+    fun lancerSnapshotEpb(etape: String, observation: String, vehicleReady: Boolean) {
+        consignerEtapeEpb(etape, observation, vehicleReady)
+        val executor = construireExecutor() ?: return
+        demarrerFlux("Snapshot EPB (lecture seule)") { executor.epbObservationSnapshot(vehicleReady) }
+    }
+
     fun journalFile(): File? = fichierJournal?.takeIf { it.exists() }
 
     override fun onCleared() {
