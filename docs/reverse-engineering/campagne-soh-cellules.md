@@ -1,7 +1,9 @@
 # Campagne SOH et cellules — protocole de captures corrélées
 
 Protocole de la campagne terrain qui suit le chantier « voie fonctionnelle
-Gen4 » (campagne 1). Il ne contient aucun VIN, aucune donnée personnelle
+Gen4 » (campagne 1). Le volet frein de stationnement électrique fait
+l'objet d'un protocole séparé, en observation seulement :
+[`epb-mode-service.md`](epb-mode-service.md). Il ne contient aucun VIN, aucune donnée personnelle
 et aucune valeur tirée d'un journal réel : seulement les faits du fil
 GitHub `meatpiHQ/wican-fw#468` et de la spécification du dépôt
 (`docs/superpowers/specs/2026-10-29-outlander-phev-spy-design.md`).
