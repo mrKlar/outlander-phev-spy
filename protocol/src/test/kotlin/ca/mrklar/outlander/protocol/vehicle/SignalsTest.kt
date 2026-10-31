@@ -135,13 +135,22 @@ class SignalsTest {
         val donnees = ByteArray(32) { (it * 7 + 3).toByte() }
 
         assertEquals(16, KnownSignals.gen4Community.size)
+        // Exception promue : l'odomètre F0D0 (séance 2026-10-31,
+        // confirmé au compteur) porte la seule équation Gen4.
         for (definition in KnownSignals.gen4Community) {
+            if (definition.id == "bmu.unknown.didf0d0") continue
             assertNull(definition.byteOffset, definition.id)
             assertNull(definition.byteLength, definition.id)
             assertNull(definition.scale, definition.id)
             assertNull(definition.offset, definition.id)
             assertNull(AffineDecoder.decode(definition, donnees), definition.id)
         }
+        val odometre = KnownSignals.byId("bmu.unknown.didf0d0")
+        assertNotNull(odometre)
+        assertEquals(
+            33267.0,
+            AffineDecoder.decode(odometre, byteArrayOf(0x00, 0x81.toByte(), 0xF3.toByte())),
+        )
     }
 
     // ------------------------------------------------- (3) bornes du décodeur
@@ -227,11 +236,14 @@ class SignalsTest {
 
         for (definition in KnownSignals.all) {
             assertTrue(!definition.id.contains("soh"), definition.id)
-            assertEquals(
-                SignalConfidence.COMMUNAUTAIRE_NON_VALIDE,
-                definition.confidence,
-                definition.id,
-            )
+            // Seule promotion : odomètre F0D0 corrélé au compteur
+            // (séance 2026-10-31). Tout le reste reste communautaire.
+            val attendue = if (definition.id == "bmu.unknown.didf0d0") {
+                SignalConfidence.CORRELE_TABLEAU_DE_BORD
+            } else {
+                SignalConfidence.COMMUNAUTAIRE_NON_VALIDE
+            }
+            assertEquals(attendue, definition.confidence, definition.id)
         }
         // Canaux attendus par DID (répondant du profil Gen4, campagne 1).
         val canauxAttendus = mapOf(
@@ -250,7 +262,11 @@ class SignalsTest {
             assertEquals(canauxAttendus[definition.requestHex], definition.channel, definition.id)
             assertTrue(definition.requestHex.startsWith("22"), definition.id)
             assertEquals(
-                "WiCAN #468 @amwalters 2025-10-31 (profil Gen4, non validé)",
+                if (definition.id == "bmu.unknown.didf0d0") {
+                    "séance 2026-10-31 (33 267 km lus, confirmé au compteur par le propriétaire)"
+                } else {
+                    "WiCAN #468 @amwalters 2025-10-31 (profil Gen4, non validé)"
+                },
                 definition.source,
                 definition.id,
             )
@@ -300,7 +316,7 @@ class SignalsTest {
             assertNotNull(KnownSignals.byId("bmu.unknown.did022a")).label,
         )
         assertEquals(
-            "Odomètre (piste)",
+            "Odomètre",
             assertNotNull(KnownSignals.byId("bmu.unknown.didf0d0")).label,
         )
     }

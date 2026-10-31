@@ -73,6 +73,15 @@ class ElmSession(
     @Volatile
     private var atrvConnu: Double? = null
 
+    /**
+     * Clé du dernier canal programmé sur CET adaptateur (séance
+     * 2026-10-31 : deux caches clients indépendants ont émis avec un
+     * en-tête périmé). Partagée par tous les programmeurs de canal de
+     * la session ; remise à `null` par l'`ATZ` d'[initialize].
+     */
+    @Volatile
+    internal var cleCanalProgramme: String? = null
+
     private val fermeLock = Any()
     private var ferme = false
 
@@ -308,6 +317,7 @@ class ElmSession(
         }
 
         transact("ATZ", timeoutMs = 2500, phase = "init")
+        cleCanalProgramme = null
 
         val repAti = transact("ATI", phase = "init")
         val ati = analyserAti(repAti)

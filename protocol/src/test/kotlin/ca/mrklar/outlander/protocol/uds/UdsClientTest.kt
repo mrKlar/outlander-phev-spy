@@ -43,12 +43,14 @@ class UdsClientTest {
     private fun octets(vararg valeurs: Int): ByteArray =
         ByteArray(valeurs.size) { valeurs[it].toByte() }
 
+    // Séance 2026-10-31 : plus d'ATCRA (forme 29 bits refusée par le
+    // clone, filtre 11 bits persistant) et FC automatique en 29 bits.
     private val entetesBmuDb = listOf(
-        "ATSH DA DB F1", "ATCRA DA F1 DB", "ATFCSH DA DB F1", "ATFCSD300000", "ATFCSM1",
+        "ATSH DA DB F1", "ATFCSM0",
     )
 
     private val entetesLegacyBmu = listOf(
-        "ATSH761", "ATCRA762", "ATFCSH761", "ATFCSD300000", "ATFCSM1",
+        "ATSH761", "ATFCSH761", "ATFCSD300000", "ATFCSM1",
     )
 
     // (canaux) Constantes et fabriques du compagnon EcuChannel.
@@ -117,8 +119,11 @@ class UdsClientTest {
         assertTrue(transport.mismatches.isEmpty(), "mismatches=${transport.mismatches}")
 
         val evenements = journal.events
-        assertEquals(6, evenements.size)
-        assertTrue(evenements.take(5).all { it.kind == "at" }, "kinds=${evenements.map { it.kind }}")
+        assertEquals(entetesBmuDb.size + 1, evenements.size)
+        assertTrue(
+            evenements.dropLast(1).all { it.kind == "at" },
+            "kinds=${evenements.map { it.kind }}",
+        )
         val uds = evenements.last()
         assertEquals("uds", uds.kind)
         assertEquals("22F190", uds.requestBytes)
@@ -126,6 +131,54 @@ class UdsClientTest {
             .joinToString("") { "%02X".format(it.toInt() and 0xFF) }
         assertEquals("62F190$hexVin", uds.responseReassembled)
         assertNull(uds.responseNrc)
+
+        session.close()
+    }
+
+    // (a2) Séance 2026-10-31 : le clone imprime l'ID 29 bits espacé
+    // (« 18 DA F1 DB 05 … »). La lecture DID doit classer Positive —
+    // avant le correctif du parseur, elle tombait en ElmFailure et
+    // l'exécuteur concluait à tort « aucune réponse Gen4 ».
+    @Test
+    fun lectureDid29BitsEnteteEspaceePositive() = runTest(UnconfinedTestDispatcher()) {
+        val transport = ScriptedElmTransport(
+            ok(entetesBmuDb) + exchange("2201D1", "18 DA F1 DB 05 62 01 D1 00 B0 \r>"),
+        )
+        val journal = InMemoryJournal()
+        val session = session(transport, journal)
+        val client = UdsClient(session)
+
+        val reponse = client.readDataByIdentifier(EcuChannel.BMU_DB, 0x01D1)
+
+        assertEquals(UdsReply.Positive(octets(0x00, 0xB0)), reponse)
+        assertEquals("6201D100B0", journal.events.last().responseReassembled)
+        assertTrue(transport.mismatches.isEmpty(), "mismatches=${transport.mismatches}")
+
+        session.close()
+    }
+
+    // (a3) Cache de canal partagé entre clients : programmer le canal
+    // fonctionnel via UdsClient dispense ObdClient de réémettre les
+    // en-têtes (séance 2026-10-31, défaut B).
+    @Test
+    fun cacheCanalPartageEntreClientsUdsEtObd() = runTest(UnconfinedTestDispatcher()) {
+        val transport = ScriptedElmTransport(
+            ok(listOf("ATSH DB 33 F1", "ATFCSM0")) +
+                exchange("0100", "18 DA F1 DB 06 41 00 98 18 00 03 \r>"),
+        )
+        val journal = InMemoryJournal()
+        val session = session(transport, journal)
+        val uds = UdsClient(session)
+        val obd = ObdClient(session)
+
+        uds.programChannel(EcuChannel.FUNCTIONAL_29)
+        val reponses = obd.request(EcuChannel.FUNCTIONAL_29, "0100")
+
+        assertTrue(
+            reponses["18DAF1DB"] is UdsReply.Positive,
+            "reponses=$reponses",
+        )
+        assertTrue(transport.mismatches.isEmpty(), "mismatches=${transport.mismatches}")
 
         session.close()
     }

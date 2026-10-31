@@ -71,8 +71,9 @@ object AffineDecoder : SignalDecoder {
 /**
  * Registre des signaux connus (spec §8.3 et §3.1 F4).
  *
- * À ce stade, tout est [SignalConfidence.COMMUNAUTAIRE_NON_VALIDE] :
- * aucune promotion sans corrélation sur le véhicule cible (§8.2).
+ * Promotion seulement par corrélation sur le véhicule cible (§8.2) :
+ * seul l'odomètre (F0D0, séance 2026-10-31) est corrélé à ce jour ;
+ * tout le reste reste [SignalConfidence.COMMUNAUTAIRE_NON_VALIDE].
  */
 object KnownSignals {
 
@@ -153,12 +154,16 @@ object KnownSignals {
         ),
         SignalDefinition(
             id = "bmu.unknown.didf0d0",
-            label = "Odomètre (piste)",
+            label = "Odomètre",
             channel = EcuChannel.BMU_DB,
             requestHex = "22F0D0",
+            byteOffset = 0,
+            byteLength = 3,
+            scale = 1.0,
+            offset = 0.0,
             unit = "km",
-            source = SOURCE_GEN4,
-            confidence = SignalConfidence.COMMUNAUTAIRE_NON_VALIDE,
+            source = "séance 2026-10-31 (33 267 km lus, confirmé au compteur par le propriétaire)",
+            confidence = SignalConfidence.CORRELE_TABLEAU_DE_BORD,
         ),
         SignalDefinition(
             id = "ecu.hvAv.did0112",

@@ -10,6 +10,7 @@ import ca.mrklar.outlander.protocol.uds.ObdClient
 import ca.mrklar.outlander.protocol.uds.RequestGuard
 import ca.mrklar.outlander.protocol.uds.UdsClient
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -33,13 +34,17 @@ class ScanExecutorTest {
     private fun nd(cmd: String) = ex(cmd, "NO DATA\r>")
     private fun atrv(v: String = "14.2V") = ex("ATRV", "$v\r>")
 
+    // Séance 2026-10-31 : plus d'ATCRA ; FC automatique en 29 bits.
     private fun prog11(tx: String, rx: String): List<ScriptedElmTransport.Exchange> = listOf(
-        ok("ATSH$tx"), ok("ATCRA$rx"), ok("ATFCSH$tx"), ok("ATFCSD300000"), ok("ATFCSM1"),
+        ok("ATSH$tx"), ok("ATFCSH$tx"), ok("ATFCSD300000"), ok("ATFCSM1"),
     )
 
     private fun prog29(addr: String): List<ScriptedElmTransport.Exchange> = listOf(
-        ok("ATSH DA $addr F1"), ok("ATCRA DA F1 $addr"), ok("ATFCSH DA $addr F1"),
-        ok("ATFCSD300000"), ok("ATFCSM1"),
+        ok("ATSH DA $addr F1"), ok("ATFCSM0"),
+    )
+
+    private fun progFonc29(): List<ScriptedElmTransport.Exchange> = listOf(
+        ok("ATSH DB 33 F1"), ok("ATFCSM0"),
     )
 
     private val capacites = AdapterCapabilities(
@@ -123,8 +128,10 @@ class ScanExecutorTest {
             addAll(prog29("DB"))
             add(ex("3E00", "18DAF1DB 02 7E 00\r>"))
             add(ex("22F190", vinFrames))
-            addAll(prog29("DE")); add(nd("3E00")); add(nd("22F190")); add(nd("22F190"))
-            addAll(prog29("E5")); add(nd("3E00")); add(nd("22F190")); add(nd("22F190"))
+            addAll(prog29("DE")); add(nd("3E00")); add(nd("22F190"))
+            addAll(progFonc29()); add(nd("22F190"))
+            addAll(prog29("E5")); add(nd("3E00")); add(nd("22F190"))
+            addAll(progFonc29()); add(nd("22F190"))
             // identification sur DB : F186 positif, reste NO DATA, puis les 3 lectures DTC.
             add(atrv()); addAll(prog29("DB"))
             add(ex("22F186", "18DAF1DB 04 62 F1 86 01\r>"))
@@ -138,10 +145,12 @@ class ScanExecutorTest {
             for (req in listOf("2201D0", "220106", "220178", "220179", "22010B", "22022A", "22F0D0")) {
                 add(ex(req, "18DAF1DB 03 7F 22 31\r>"))
             }
-            add(nd("220112")); addAll(prog29("E5")); add(nd("220112"))
-            add(nd("22011A")); addAll(prog29("DE")); add(nd("22011A"))
+            // Cache de canal partagé : chaque alternance fonctionnel↔
+            // physique reprogramme réellement l'en-tête.
+            addAll(progFonc29()); add(nd("220112")); addAll(prog29("E5")); add(nd("220112"))
+            addAll(progFonc29()); add(nd("22011A")); addAll(prog29("DE")); add(nd("22011A"))
             for (req in listOf("220126", "22011C", "220119", "220113", "220107", "220105")) {
-                add(nd(req)); add(nd(req))
+                addAll(progFonc29()); add(nd(req)); addAll(prog29("DE")); add(nd(req))
             }
         }
 
@@ -609,6 +618,47 @@ class ScanExecutorTest {
     }
 
     // -----------------------------------------------------------------------
+    // Suivi cellules : deux cycles bornés par take(). Trames espacées
+    // du journal 2026-10-31 ; premier DID en fonctionnel, suite en
+    // physique une fois DB répondant. Valeurs brutes non converties.
+    @Test
+    fun suiviCellulesDeuxCycles() = runTest(UnconfinedTestDispatcher()) {
+        val script = buildList {
+            add(atrv()); add(ok("ATSP7")); add(ok("ATCP18"))
+            addAll(progFonc29())
+            add(ex("220178", "18 DA F1 DB 05 62 01 78 10 36 \r>"))
+            addAll(prog29("DB"))
+            add(ex("220179", "18 DA F1 DB 05 62 01 79 10 30 \r>"))
+            add(ex("220106", "18 DA F1 DB 05 62 01 06 9B 8E \r>"))
+            add(ex("2201D1", "18 DA F1 DB 05 62 01 D1 00 B0 \r>"))
+            add(ex("220178", "18 DA F1 DB 05 62 01 78 10 37 \r>"))
+            add(ex("220179", "18 DA F1 DB 05 62 01 79 10 2E \r>"))
+            add(ex("220106", "18 DA F1 DB 05 62 01 06 9B 8D \r>"))
+            add(ex("2201D1", "18 DA F1 DB 05 62 01 D1 00 AF \r>"))
+        }
+        val transport = ScriptedElmTransport(script)
+        val journal = InMemoryJournal()
+        val (session, executor) = executor(transport, journal)
+
+        val evenements = executor.suiviCellules().take(4).toList()
+
+        assertEquals(
+            listOf(
+                ScanEvent.Cellules(0x1036, 0x1030, 0x9B8E, 0x00B0),
+                ScanEvent.Cellules(0x1037, 0x102E, 0x9B8D, 0x00AF),
+            ),
+            evenements.filterIsInstance<ScanEvent.Cellules>(),
+            "evenements=$evenements",
+        )
+        assertTrue(transport.mismatches.isEmpty(), "mismatches=${transport.mismatches}")
+        assertTrue(
+            journal.events.any { it.phase == "suivi-cellules" && it.requestBytes == "220178" },
+            "phases=${journal.events.map { it.phase }.distinct()}",
+        )
+
+        session.close()
+    }
+
     // EPB observation : snapshot lecture seule (F186/F187/F189 + DTC, puis Gen4)
     // -----------------------------------------------------------------------
 
@@ -634,13 +684,13 @@ class ScanExecutorTest {
             for (r in listOf("2201D1", "2201D0", "220106", "220178", "220179", "22010B", "22022A", "22F0D0")) {
                 add(nd(r))
             }
-            // E5 non répondant : fonctionnel (programmation ObdClient), puis physique.
-            add(ok("ATSH DB 33 F1")); add(ok("ATFCSM0")); add(nd("220112"))
+            // E5/DE non répondants : fonctionnel puis physique, avec
+            // reprogrammation à chaque alternance (cache partagé).
+            addAll(progFonc29()); add(nd("220112"))
             addAll(prog29("E5")); add(nd("220112"))
-            // DE non répondant : fonctionnel déjà programmé, puis physique.
-            add(nd("22011A")); addAll(prog29("DE")); add(nd("22011A"))
+            addAll(progFonc29()); add(nd("22011A")); addAll(prog29("DE")); add(nd("22011A"))
             for (r in listOf("220126", "22011C", "220119", "220113", "220107", "220105")) {
-                add(nd(r)); add(nd(r))
+                addAll(progFonc29()); add(nd(r)); addAll(prog29("DE")); add(nd(r))
             }
         }
         val transport = ScriptedElmTransport(script)

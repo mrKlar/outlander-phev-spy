@@ -48,6 +48,18 @@ data class SessionUiState(
     val scanRunning: Boolean = false,
     val lines: List<String> = emptyList(),
     val error: String? = null,
+    // Suivi cellules en continu (valeurs candidates, séance 2026-10-31).
+    val suiviActif: Boolean = false,
+    val cellMaxMv: Int? = null,
+    val cellMinMv: Int? = null,
+    val cellDeltaMv: Int? = null,
+    val packVolts: Double? = null,
+    val socBrut: Int? = null,
+    val deltaMinSession: Int? = null,
+    val deltaMaxSession: Int? = null,
+    val historiqueCellules: List<Pair<Int, Int>> = emptyList(),
+    val suiviMaj: String? = null,
+    val suiviCycles: Int = 0,
 )
 
 /**
@@ -298,6 +310,92 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    /**
+     * Suivi continu du delta de cellules (demande du propriétaire) :
+     * mêmes job/arrêt que le scan. Conversions candidates de la
+     * séance 2026-10-31 (SOC 100 %) : 0178/0179 lus en mV directs,
+     * 0106 × 0,01 V ; le journal garde les bruts.
+     */
+    fun lancerSuiviCellules() {
+        val executor = construireExecutor() ?: return
+        if (scanJob?.isActive == true) {
+            ajouterLignes("Suivi cellules : un scan est déjà en cours.")
+            return
+        }
+        _state.update {
+            it.copy(
+                scanRunning = true,
+                suiviActif = true,
+                error = null,
+                cellMaxMv = null,
+                cellMinMv = null,
+                cellDeltaMv = null,
+                packVolts = null,
+                socBrut = null,
+                deltaMinSession = null,
+                deltaMaxSession = null,
+                historiqueCellules = emptyList(),
+                suiviMaj = null,
+                suiviCycles = 0,
+            )
+        }
+        ajouterLignes("Démarrage : suivi cellules en continu (lecture seule). Arrêter pour terminer.")
+        scanJob = viewModelScope.launch {
+            try {
+                executor.suiviCellules(true).collect { evenement ->
+                    if (evenement is ScanEvent.Cellules) {
+                        mettreAJourSuivi(evenement)
+                    } else {
+                        ajouterLignes(formater(evenement))
+                    }
+                }
+                ajouterLignes("Suivi cellules terminé.")
+            } catch (e: CancellationException) {
+                ajouterLignes("Suivi cellules interrompu.")
+                throw e
+            } catch (e: RequestRefusedException) {
+                ajouterLignes("Refus du garde lecture seule : ${e.message ?: "refus"}")
+            } catch (e: Throwable) {
+                signalerErreur("Suivi cellules : ${e.message ?: e}")
+            } finally {
+                _state.update { it.copy(scanRunning = false, suiviActif = false) }
+            }
+        }
+    }
+
+    private fun mettreAJourSuivi(evenement: ScanEvent.Cellules) {
+        val maxMv = evenement.maxBrut
+        val minMv = evenement.minBrut
+        val delta = if (maxMv != null && minMv != null) maxMv - minMv else null
+        val heure = LocalTime.now().format(FORMAT_HEURE)
+        _state.update { etat ->
+            etat.copy(
+                cellMaxMv = maxMv,
+                cellMinMv = minMv,
+                cellDeltaMv = delta,
+                packVolts = evenement.packBrut?.let { it * 0.01 },
+                socBrut = evenement.socBrut,
+                deltaMinSession = when {
+                    delta == null -> etat.deltaMinSession
+                    etat.deltaMinSession == null -> delta
+                    else -> minOf(etat.deltaMinSession, delta)
+                },
+                deltaMaxSession = when {
+                    delta == null -> etat.deltaMaxSession
+                    etat.deltaMaxSession == null -> delta
+                    else -> maxOf(etat.deltaMaxSession, delta)
+                },
+                historiqueCellules = if (maxMv != null && minMv != null) {
+                    (etat.historiqueCellules + (maxMv to minMv)).takeLast(MAX_HISTORIQUE_CELLULES)
+                } else {
+                    etat.historiqueCellules
+                },
+                suiviMaj = heure,
+                suiviCycles = etat.suiviCycles + 1,
+            )
+        }
+    }
+
     fun arreterScan() {
         scanJob?.cancel()
         scanJob = null
@@ -492,10 +590,14 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         is ScanEvent.Refused -> "Refusé : ${evenement.description} — ${evenement.reason}"
         is ScanEvent.Stopped -> "Arrêt (${evenement.phase}) : ${evenement.reason}"
         is ScanEvent.Note -> evenement.message
+        is ScanEvent.Cellules ->
+            "Cellules : max=${evenement.maxBrut} min=${evenement.minBrut} " +
+                "pack=${evenement.packBrut} soc=${evenement.socBrut} (bruts)"
     }
 
     private companion object {
         const val MAX_LIGNES = 400
+        const val MAX_HISTORIQUE_CELLULES = 240
         val FORMAT_HORODATAGE: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")
         val FORMAT_HEURE: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
         val MOTIF_LECTURE_DID: Regex = Regex("^22[0-9A-F]{4}$")

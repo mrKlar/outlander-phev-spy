@@ -16,6 +16,7 @@ import ca.mrklar.outlander.protocol.vehicle.KnownSignals
 import ca.mrklar.outlander.protocol.vehicle.SignalDefinition
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.flow
@@ -30,6 +31,7 @@ data class ScanConfig(
     val atrvFloorVolts: Double = 12.0,
     val atrvPollMs: Long = 30_000,
     val maxConsecutiveCanErrors: Int = 3,
+    val suiviIntervalleMs: Long = 1000,
 )
 
 /** Progression observable d'un scan : phases, répondants, sondes, refus, arrêts. */
@@ -41,6 +43,20 @@ sealed interface ScanEvent {
     data class Refused(val description: String, val reason: String) : ScanEvent
     data class Stopped(val phase: String, val reason: String) : ScanEvent
     data class Note(val message: String) : ScanEvent
+
+    /**
+     * Un cycle du suivi cellules : valeurs brutes (big-endian non
+     * signé, charge après `62 <DID>`) des DID DB `0178`, `0179`,
+     * `0106`, `01D1` ; `null` = lecture non positive de ce cycle.
+     * Aucune conversion ici : les échelles candidates (mV, ×0,01 V)
+     * restent des hypothèses affichées comme telles par l'app.
+     */
+    data class Cellules(
+        val maxBrut: Int?,
+        val minBrut: Int?,
+        val packBrut: Int?,
+        val socBrut: Int?,
+    ) : ScanEvent
 }
 
 /** Bilan d'un balayage de DID (phase 8). */
@@ -658,6 +674,75 @@ class ScanExecutor(
         }
         emettreArretSiNecessaire(emit)
         emit(ScanEvent.PhaseFinished("did-gen4"))
+    }
+
+    /**
+     * Suivi continu des cellules (demande du propriétaire, séance
+     * 2026-10-31) : relit en boucle les DID DB `0178` (cellule max,
+     * piste), `0179` (cellule min, piste), `0106` (tension HV, piste)
+     * et `01D1` (SOC, piste), un [ScanEvent.Cellules] par cycle,
+     * jusqu'à annulation du collecteur ou garde (§5.5). Même logique
+     * fonctionnel-d'abord que [corpsGen4] ; lectures journalisées en
+     * phase `suivi-cellules`, valeurs brutes non converties.
+     */
+    fun suiviCellules(vehicleReady: Boolean = true): Flow<ScanEvent> = flow {
+        this@ScanExecutor.vehicleReady = vehicleReady
+        val collecteur = this
+        val emit: suspend (ScanEvent) -> Unit = { collecteur.emit(it) }
+        phaseCourante = "suivi-cellules"
+        emit(ScanEvent.PhaseStarted("suivi-cellules"))
+        if (gardeAtrv(force = true, emit = emit) &&
+            assurerProtocole(bits29 = true, emit = emit)
+        ) {
+            val timeout = config.identificationTimeoutMs
+            while (!arrete && currentCoroutineContext().isActive) {
+                val max = lireBrutSuivi(0x0178, timeout, emit)
+                if (arrete) break
+                val min = lireBrutSuivi(0x0179, timeout, emit)
+                if (arrete) break
+                val pack = lireBrutSuivi(0x0106, timeout, emit)
+                if (arrete) break
+                val soc = lireBrutSuivi(0x01D1, timeout, emit)
+                if (arrete) break
+                emit(ScanEvent.Cellules(max, min, pack, soc))
+                delayFn(config.suiviIntervalleMs)
+            }
+        }
+        emettreArretSiNecessaire(emit)
+        emit(ScanEvent.PhaseFinished("suivi-cellules"))
+    }
+
+    /** Lecture d'un DID DB du suivi ; valeur brute big-endian ou `null`. */
+    private suspend fun lireBrutSuivi(
+        did: Int,
+        timeoutMs: Long,
+        emit: suspend (ScanEvent) -> Unit,
+    ): Int? {
+        val reply: UdsReply? = if (EcuChannel.BMU_DB in canauxRepondants) {
+            lireDid(EcuChannel.BMU_DB, did, timeoutMs, emit)
+        } else {
+            val fonctionnel = lireDidFonctionnel(
+                expectedChannel = EcuChannel.BMU_DB,
+                did = did,
+                timeoutMs = timeoutMs,
+                emit = emit,
+            )
+            if (fonctionnel is UdsReply.NoData) {
+                lireDid(EcuChannel.BMU_DB, did, timeoutMs, emit)
+            } else {
+                fonctionnel
+            }
+        }
+        if (reply is UdsReply.Positive || reply is UdsReply.Negative) {
+            if (canauxRepondants.add(EcuChannel.BMU_DB)) {
+                emit(ScanEvent.EcuResponded(phaseCourante, "18DAF1DB"))
+            }
+        }
+        val charge = (reply as? UdsReply.Positive)?.payload ?: return null
+        if (charge.isEmpty() || charge.size > 4) return null
+        var brut = 0
+        for (octetCharge in charge) brut = (brut shl 8) or (octetCharge.toInt() and 0xFF)
+        return brut
     }
 
     /**

@@ -97,28 +97,37 @@ sealed interface UdsReply {
 
 /**
  * Programmation des en-têtes CAN ELM d'un [EcuChannel], partagée par
- * [UdsClient] et [ObdClient] (une instance par client). Le canal
- * courant est mémorisé : reprogammer le même canal (égalité data
- * class) n'émet rien. Les réponses aux commandes AT ne sont pas
- * vérifiées ici — un refus (« ? ») reste visible au journal et la
- * matrice de capacités gouverne l'usage (tâche 8).
+ * [UdsClient] et [ObdClient]. Le canal en vigueur est mémorisé dans
+ * la session (un seul adaptateur) : reprogammer le même canal
+ * n'émet rien, quel que soit le client. Les réponses aux commandes
+ * AT ne sont pas vérifiées ici — un refus (« ? ») reste visible au
+ * journal et la matrice de capacités gouverne l'usage (tâche 8) ;
+ * les formes refusées par le clone de la séance 2026-10-31
+ * (`ATCRA`/`ATFCSH` 29 bits) ne sont plus émises du tout.
  *
- * Formats : 11 bits collés (`ATSH761`, `ATCRA762`, `ATFCSH761`,
- * `ATFCSD300000`, `ATFCSM1`) ; 29 bits, 3 octets bas espacés
- * (`ATSH DA DB F1`, `ATCRA DA F1 DB`, `ATFCSH DA DB F1`), `ATFCSD`
- * reste collé. Canal fonctionnel : `ATFCSM0` seul côté Flow Control
+ * Formats : 11 bits collés (`ATSH761`, `ATFCSH761`, `ATFCSD300000`,
+ * `ATFCSM1`) ; 29 bits, 3 octets bas espacés (`ATSH DA DB F1`) puis
+ * `ATFCSM0`. Canal fonctionnel : `ATFCSM0` seul côté Flow Control
  * (répondant inconnu d'avance, FC automatique de l'ELM).
  */
 internal class ChannelProgrammer(private val session: ElmSession) {
 
-    private var canalProgramme: EcuChannel? = null
+    // Cache porté par la session (un seul adaptateur physique) : les
+    // instances UDS et OBD ne peuvent plus diverger sur le canal en
+    // vigueur (séance 2026-10-31, défaut B du compte rendu).
+    private fun cle(channel: EcuChannel): String =
+        "%X/%X/%X/%s/%s".format(
+            channel.txId, channel.rxId, channel.fcHeader,
+            channel.extended29Bit, channel.functional,
+        )
 
     suspend fun program(channel: EcuChannel, timeoutMs: Long, phase: String) {
-        if (canalProgramme == channel) return
+        val cle = cle(channel)
+        if (session.cleCanalProgramme == cle) return
         for (commande in commandes(channel)) {
             session.transact(commande, timeoutMs = timeoutMs, phase = phase, kind = "at")
         }
-        canalProgramme = channel
+        session.cleCanalProgramme = cle
     }
 
     /** Émet `ATFCSD` + [fcsdHex] collé (FC bridée `300A0A`) ; ne touche pas au cache de canal. */
@@ -132,10 +141,15 @@ internal class ChannelProgrammer(private val session: ElmSession) {
 
     private fun commandes(channel: EcuChannel): List<String> = buildList {
         add(commandeEntete("ATSH", channel.txId, channel.extended29Bit))
-        if (channel.rxId != 0L) {
-            add(commandeEntete("ATCRA", channel.rxId, channel.extended29Bit))
-        }
-        if (channel.functional) {
+        // Aucun ATCRA (séance 2026-10-31, défaut A) : la forme 29 bits
+        // est refusée (« ? ») par le clone et le filtre 11 bits posé
+        // avant restait actif, éliminant les réponses 29 bits. Le
+        // filtrage de réception se fait en logiciel, par en-tête,
+        // dans le parseur ISO-TP.
+        if (channel.functional || channel.extended29Bit) {
+            // 29 bits physique : FC automatique (ATFCSM0). La forme
+            // espacée d'ATFCSH est aussi refusée par le clone ; le
+            // mode 0 a livré le VIN multiframe en fonctionnel.
             add("ATFCSM0")
         } else {
             add(commandeEntete("ATFCSH", channel.fcHeader, channel.extended29Bit))

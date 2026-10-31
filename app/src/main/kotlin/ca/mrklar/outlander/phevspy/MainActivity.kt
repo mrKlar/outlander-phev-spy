@@ -9,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -35,6 +36,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
@@ -276,6 +279,89 @@ private fun EcranSession(vm: SessionViewModel = viewModel()) {
             enabled = connecte || state.connectingName != null,
             modifier = Modifier.padding(top = 4.dp),
         ) { Text("Déconnecter") }
+
+        Spacer(Modifier.height(16.dp))
+        Text("Cellules — suivi en continu", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "Delta entre cellule max (DID 0178) et min (0179), relus en " +
+                "boucle. Conversions candidates (mV directs, pack ×0,01 V) " +
+                "de la séance à SOC 100 % — pas encore corrélées à d'autres " +
+                "SOC. À démarrer à l'arrêt; l'écran ne demande aucune " +
+                "interaction ensuite.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        if (!state.suiviActif) {
+            Button(
+                onClick = { vm.lancerSuiviCellules() },
+                enabled = actionsSessionActives(connecte, state.scanRunning),
+                modifier = Modifier.padding(top = 4.dp),
+            ) { Text("Démarrer le suivi cellules") }
+        } else {
+            Button(onClick = { vm.arreterScan() }, modifier = Modifier.padding(top = 4.dp)) {
+                Text("Arrêter le suivi")
+            }
+        }
+        Text(
+            state.cellDeltaMv?.let { "Δ $it mV" } ?: "Δ — mV",
+            style = MaterialTheme.typography.displayMedium,
+        )
+        Text(
+            "max ${state.cellMaxMv?.let { "$it mV" } ?: "—"} · " +
+                "min ${state.cellMinMv?.let { "$it mV" } ?: "—"} · " +
+                "pack ${state.packVolts?.let { "%.1f V".format(it) } ?: "—"} · " +
+                "SOC brut ${state.socBrut ?: "—"}",
+        )
+        Text(
+            "Session : Δ min ${state.deltaMinSession?.let { "$it mV" } ?: "—"} · " +
+                "Δ max ${state.deltaMaxSession?.let { "$it mV" } ?: "—"} · " +
+                "${state.suiviCycles} cycles · maj ${state.suiviMaj ?: "—"}",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        if (state.historiqueCellules.size >= 2) {
+            val couleurMax = MaterialTheme.colorScheme.primary
+            val couleurMin = MaterialTheme.colorScheme.error
+            Canvas(
+                modifier = Modifier.fillMaxWidth().height(120.dp).padding(top = 8.dp),
+            ) {
+                val points = state.historiqueCellules
+                val haut = points.maxOf { it.first }.toFloat() + 5f
+                val bas = points.minOf { it.second }.toFloat() - 5f
+                val amplitude = (haut - bas).coerceAtLeast(1f)
+                fun x(index: Int): Float =
+                    if (points.size < 2) 0f else size.width * index / (points.size - 1)
+                fun y(mv: Int): Float = size.height * (haut - mv) / amplitude
+                val bande = Path().apply {
+                    points.forEachIndexed { i, (mx, _) ->
+                        if (i == 0) moveTo(x(i), y(mx)) else lineTo(x(i), y(mx))
+                    }
+                    points.indices.reversed().forEach { i ->
+                        lineTo(x(i), y(points[i].second))
+                    }
+                    close()
+                }
+                drawPath(bande, color = couleurMax.copy(alpha = 0.18f))
+                for (i in 1 until points.size) {
+                    drawLine(
+                        couleurMax,
+                        Offset(x(i - 1), y(points[i - 1].first)),
+                        Offset(x(i), y(points[i].first)),
+                        strokeWidth = 3f,
+                    )
+                    drawLine(
+                        couleurMin,
+                        Offset(x(i - 1), y(points[i - 1].second)),
+                        Offset(x(i), y(points[i].second)),
+                        strokeWidth = 3f,
+                    )
+                }
+            }
+            Text(
+                "Bande max/min (mV) dans le temps — l'écart entre les deux " +
+                    "courbes est le delta. Pas encore de tensions par cellule " +
+                    "individuelle : aucun DID long trouvé à ce jour.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
 
         Spacer(Modifier.height(16.dp))
         Text("EPB — observation du mode service (manuel)", style = MaterialTheme.typography.titleMedium)

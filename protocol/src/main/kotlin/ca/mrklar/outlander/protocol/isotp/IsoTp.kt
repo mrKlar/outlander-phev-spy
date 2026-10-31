@@ -48,6 +48,8 @@ sealed interface Reassembly {
  * Parse des lignes CAN espacées (ATS1) en trames typées, sans jamais lever d'exception.
  *
  * - `7E8 06 …` / `18DAF1DB 03 …` : premier token de 3 ou 8 hex = en-tête (majuscules).
+ * - `18 DA F1 DB 05 …` (ATS1) : ID 29 bits espacé octet par octet, reconnu
+ *   si le 5e octet est un PCI/longueur plausible (voir `estEntete29Espacee`).
  * - `0: 62 …` / `12: …` : ligne indexée, en-tête absent (headerHex = "").
  * - Sinon : ligne sans en-tête, tous les tokens sont des octets (headerHex = "").
  * - Un token d'octet qui n'est pas exactement 2 hex invalide la ligne entière.
@@ -63,6 +65,24 @@ fun parseCanLines(lines: List<String>): List<CanFrame> {
         (token.length == 3 || token.length == 8) && token.all { estHex(it) }
 
     fun estOctet(token: String): Boolean = token.length == 2 && token.all { estHex(it) }
+
+    // En-tête 29 bits espacée : 4 octets d'ID (le premier ≤ 0x1F, limite
+    // réelle d'un ID 29 bits) suivis d'un 5e octet PCI/longueur plausible
+    // (Single Frame cohérente, First/Consecutive Frame, ou présentation
+    // longueur). Sans cette plausibilité, une ligne de données sans en-tête
+    // resterait ambiguë et n'est pas réinterprétée.
+    fun estEntete29Espacee(tokens: List<String>): Boolean {
+        if (tokens.size < 5) return false
+        val tetes = tokens.take(5)
+        if (tetes.any { !estOctet(it) }) return false
+        if (tetes[0].toInt(16) > 0x1F) return false
+        val pci = tetes[4].toInt(16)
+        val reste = tokens.size - 5
+        val haut = pci and 0xF0
+        return haut == 0x10 || haut == 0x20 ||
+            (haut == 0x00 && (pci and 0x0F) == reste && pci != 0) ||
+            pci == reste
+    }
 
     val frames = mutableListOf<CanFrame>()
     for (ligneBrute in lines) {
@@ -82,6 +102,11 @@ fun parseCanLines(lines: List<String>): List<CanFrame> {
             if (estEntete(tokens.first())) {
                 headerHex = tokens.first().uppercase()
                 tokensOctets = tokens.drop(1)
+            } else if (estEntete29Espacee(tokens)) {
+                // Séance 2026-10-31 : avec ATS1, le clone imprime l'ID
+                // 29 bits octet par octet (« 18 DA F1 DB 05 62 … »).
+                headerHex = tokens.take(4).joinToString("") { it.uppercase() }
+                tokensOctets = tokens.drop(4)
             } else {
                 headerHex = ""
                 tokensOctets = tokens

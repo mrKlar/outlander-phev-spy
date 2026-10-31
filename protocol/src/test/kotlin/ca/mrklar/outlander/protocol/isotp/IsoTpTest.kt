@@ -28,6 +28,31 @@ class IsoTpTest {
         assertTrue(octets("03 62 F1 90").contentEquals(frames[0].bytes))
     }
 
+    // (P1b) Séance 2026-10-31 : le clone imprime l'ID 29 bits octet par octet
+    // (« 18 DA F1 DB … »). L'en-tête espacé doit être reconnu, sinon le premier
+    // octet 0x18 est pris pour un PCI First Frame et tout devient « incomplet ».
+    @Test
+    fun parseEntete29BitsEspaceeOctetParOctet() {
+        val frames = parseCanLines(listOf("18 DA F1 DB 05 62 01 D1 00 B0"))
+
+        assertEquals(1, frames.size)
+        assertEquals("18DAF1DB", frames[0].headerHex)
+        assertTrue(octets("05 62 01 D1 00 B0").contentEquals(frames[0].bytes))
+    }
+
+    @Test
+    fun reassembleReponseGen4EspaceePositiveEtNegative() {
+        val positif = reassembleLines("18 DA F1 DB 05 62 01 D1 00 B0")
+        val chargePositive = positif["18DAF1DB"] as? Reassembly.Complete
+        assertTrue(chargePositive != null, "attendu Complete, reçu ${positif["18DAF1DB"]}")
+        assertTrue(octets("62 01 D1 00 B0").contentEquals(chargePositive.payload))
+
+        val negatif = reassembleLines("18 DA F1 DC 03 7F 22 31")
+        val chargeNegative = negatif["18DAF1DC"] as? Reassembly.Complete
+        assertTrue(chargeNegative != null, "attendu Complete, reçu ${negatif["18DAF1DC"]}")
+        assertTrue(octets("7F 22 31").contentEquals(chargeNegative.payload))
+    }
+
     // (P2) Ligne sans en-tête : tous les tokens sont des octets, headerHex vide.
     @Test
     fun parseLigneSansEnteteTousLesTokensSontDesOctets() {
