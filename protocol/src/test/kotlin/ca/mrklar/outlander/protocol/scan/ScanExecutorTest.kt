@@ -631,12 +631,14 @@ class ScanExecutorTest {
             // transitoire), restitué en fin de flux.
             add(ok("ATST64"))
             addAll(progFonc29())
-            add(ex("220178", "18 DA F1 DB 05 62 01 78 10 36 \r>"))
+            add(ex("220106", "18 DA F1 DB 05 62 01 06 9B 90 \r>"))
             addAll(prog29("DB"))
+            add(ex("220178", "18 DA F1 DB 05 62 01 78 10 36 \r>"))
             add(ex("220179", "18 DA F1 DB 05 62 01 79 10 30 \r>"))
             add(ex("220106", "18 DA F1 DB 05 62 01 06 9B 8E \r>"))
             add(ex("2201D1", "18 DA F1 DB 05 62 01 D1 00 B0 \r>"))
             add(ex("22F0D0", "18 DA F1 DB 06 62 F0 D0 00 81 F3 \r>"))
+            add(ex("220106", "18 DA F1 DB 05 62 01 06 9B 8E \r>"))
             add(ex("220178", "18 DA F1 DB 05 62 01 78 10 37 \r>"))
             add(ex("220179", "18 DA F1 DB 05 62 01 79 10 2E \r>"))
             add(ex("220106", "18 DA F1 DB 05 62 01 06 9B 8D \r>"))
@@ -651,8 +653,8 @@ class ScanExecutorTest {
 
         assertEquals(
             listOf(
-                ScanEvent.Cellules(0x1036, 0x1030, 0x9B8E, 0x00B0, odoKm = 33267),
-                ScanEvent.Cellules(0x1037, 0x102E, 0x9B8D, 0x00AF, odoKm = null),
+                ScanEvent.Cellules(0x1036, 0x1030, 0x9B8E, 0x00B0, odoKm = 33267, packAvantBrut = 0x9B90),
+                ScanEvent.Cellules(0x1037, 0x102E, 0x9B8D, 0x00AF, odoKm = null, packAvantBrut = 0x9B8E),
             ),
             evenements.filterIsInstance<ScanEvent.Cellules>(),
             "evenements=$evenements",

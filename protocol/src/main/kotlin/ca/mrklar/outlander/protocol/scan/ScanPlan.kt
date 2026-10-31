@@ -61,6 +61,12 @@ sealed interface ScanEvent {
         val packBrut: Int?,
         val socBrut: Int?,
         val odoKm: Int? = null,
+        /**
+         * Pack (0106) lu juste AVANT la paire max/min ; [packBrut] est
+         * lu juste après. Écart entre les deux = charge qui bouge
+         * pendant la paire → Δ du cycle non significatif.
+         */
+        val packAvantBrut: Int? = null,
     ) : ScanEvent
 
     /**
@@ -719,6 +725,10 @@ class ScanExecutor(
             val timeout = config.identificationTimeoutMs
             var cycle = 0
             while (!arrete && currentCoroutineContext().isActive) {
+                // Pack encadrant la paire (session-20261031-151341 :
+                // Δ de −69 à +78 mV quand le pack bouge sous charge).
+                val packAvant = lireBrutSuivi(0x0106, timeout, emit)
+                if (arrete) break
                 val max = lireBrutSuivi(0x0178, timeout, emit)
                 if (arrete) break
                 val min = lireBrutSuivi(0x0179, timeout, emit)
@@ -730,7 +740,7 @@ class ScanExecutor(
                 // Odomètre (seul DID corrélé) : premier cycle puis tous les 30.
                 val odo = if (cycle % 30 == 0) lireBrutSuivi(0xF0D0, timeout, emit) else null
                 if (arrete) break
-                emit(ScanEvent.Cellules(max, min, pack, soc, odo))
+                emit(ScanEvent.Cellules(max, min, pack, soc, odo, packAvant))
                 cycle++
                 delayFn(config.suiviIntervalleMs)
             }

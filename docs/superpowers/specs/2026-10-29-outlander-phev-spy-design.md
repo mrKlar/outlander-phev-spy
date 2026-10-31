@@ -520,6 +520,11 @@ Checklist affichée par l'app avant tout lancement de scan :
 
 Critères d'arrêt : section 5.5.
 
+**Lectures récurrentes ajoutées après la première session (2026-10-31).** Aucun nouveau service : uniquement `0x22` en session par défaut, mêmes gardes §5.5.
+- *Suivi cellules* (DB) : cycle `220106`, `220178`, `220179`, `220106`, `2201D1`, `22F0D0` tous les 30 cycles, ST `64`. Le pack lu avant et après la paire max/min sert à écarter les cycles transitoires.
+- *Lecture des cellules* : `220114`–`220173` chez DB, une relecture par DID en échec.
+- *Observation EPB* : à chaque étape manuelle consignée par le propriétaire, identification `F186`/`F187`/`F189`, DTC `1901FF`/`1902FF`/`190A` sur `DA`, `DB`, `DC`, `DD`, `DE`, `DF`, `E5`, puis l'étape 7 ; en capture complète, balayage fonctionnel `22 0100`–`01FF` (en-tête `18DB33F1`, toutes réponses `18DAF1xx` journalisées). Observation seulement : aucun actionnement, aucun `0x31`/`0x2F`/`0x2E`/`0x27`, la séquence d'entrée et de sortie du mode service est faite à la main par le propriétaire.
+
 ### 7.3 Interprétation des issues possibles
 
 | Observation | Conclusion | Suite |

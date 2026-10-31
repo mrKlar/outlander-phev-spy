@@ -412,8 +412,8 @@ private fun EcranSession(vm: SessionViewModel = viewModel()) {
         listOf(
             "Repos, EPB serré",
             "Repos, EPB desserré",
-            "Après mon entrée manuelle en maintenance",
-            "En maintenance (+2 min)",
+            "Icône maintenance affichée (après 10 cycles EPB)",
+            "Après ma tentative de rétraction (noter si moteur entendu)",
             "Après ma sortie manuelle",
             "Après 2 applications/libérations normales",
         ).forEach { etape ->
@@ -435,6 +435,11 @@ private fun EcranSession(vm: SessionViewModel = viewModel()) {
             enabled = actionsSessionActives(connecte, state.scanRunning),
             modifier = Modifier.padding(top = 4.dp),
         ) { Text("Capturer cet état (lecture seule)") }
+        OutlinedButton(
+            onClick = { vm.lancerCaptureEpbComplete(etapeEpb, observationEpb) },
+            enabled = actionsSessionActives(connecte, state.scanRunning),
+            modifier = Modifier.padding(top = 4.dp),
+        ) { Text("Capture complète : + balayage DID tous ECU (~3 min)") }
         Text(
             "Refaire la capture à chaque étape sans déconnecter; exporter le journal à la fin.",
             style = MaterialTheme.typography.bodySmall,

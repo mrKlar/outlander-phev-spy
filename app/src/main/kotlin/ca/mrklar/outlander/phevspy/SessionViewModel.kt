@@ -382,8 +382,11 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
             // entre cycles ; au régime stable Δ = 10-12 mV, comme les
             // 96 cellules. Seuls les cycles stables comptent.
             val pack = evenement.packBrut?.let { it * 0.01 }
-            val transitoire = brut == null || brut < 0 || pack == null || etat.packVolts == null ||
-                kotlin.math.abs(pack - etat.packVolts) > SEUIL_TRANSITOIRE_PACK_V
+            // Pack lu juste avant et juste après la paire : c'est le
+            // critère direct ; à défaut, l'écart au cycle précédent.
+            val packAvant = evenement.packAvantBrut?.let { it * 0.01 } ?: etat.packVolts
+            val transitoire = brut == null || brut < 0 || pack == null || packAvant == null ||
+                kotlin.math.abs(pack - packAvant) > SEUIL_TRANSITOIRE_PACK_V
             val delta = if (transitoire) null else brut
             etat.copy(
                 deltaTransitoire = transitoire,
@@ -541,6 +544,42 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         demarrerFlux("Snapshot EPB (lecture seule)") { executor.epbObservationSnapshot(true) }
     }
 
+    /**
+     * Capture EPB complète : snapshot habituel puis balayage
+     * fonctionnel 22 0100-01FF (tous les répondants 29 bits au
+     * journal, ~2-3 min), pour comparer octet par octet les états
+     * normal / maintenance / sortie. Lectures 0x22 seulement.
+     */
+    fun lancerCaptureEpbComplete(etape: String, observation: String) {
+        consignerEtapeEpb("$etape [complète]", observation)
+        val executor = construireExecutor() ?: return
+        if (scanJob?.isActive == true) {
+            ajouterLignes("Capture EPB : un scan est déjà en cours.")
+            return
+        }
+        _state.update { it.copy(scanRunning = true, error = null) }
+        ajouterLignes("Démarrage : capture EPB complète (lecture seule, ~3 min)")
+        scanJob = viewModelScope.launch {
+            try {
+                executor.epbObservationSnapshot(true).collect { ajouterLignes(formater(it)) }
+                val resultat = executor.sweepFunctionalDidRange(EcuChannel.BMU_DB, 0x0100..0x01FF)
+                ajouterLignes(
+                    "Capture EPB complète terminée (balayage : ${resultat.positives.size} DID DB positifs" +
+                        (resultat.stoppedReason?.let { ", arrêt : $it" } ?: "") + ").",
+                )
+            } catch (e: CancellationException) {
+                ajouterLignes("Capture EPB interrompue.")
+                throw e
+            } catch (e: RequestRefusedException) {
+                ajouterLignes("Refus du garde lecture seule : ${e.message ?: "refus"}")
+            } catch (e: Throwable) {
+                signalerErreur("Capture EPB : ${e.message ?: e}")
+            } finally {
+                _state.update { it.copy(scanRunning = false) }
+            }
+        }
+    }
+
     fun journalFile(): File? = fichierJournal?.takeIf { it.exists() }
 
     override fun onCleared() {
@@ -664,10 +703,10 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
 
     private companion object {
         const val MAX_LIGNES = 400
-        // ponytail: seuil fixe de stabilité du pack entre deux cycles
-        // (~3-4 s) ; au repos le pack varie de 0,02-0,05 V, en
+        // ponytail: seuil fixe de stabilité du pack pendant la paire
+        // max/min (~1,3 s) ; au repos il varie de 0,02-0,05 V, en
         // transitoire de 1 à 15 V. Ajuster si trop de cycles écartés.
-        private const val SEUIL_TRANSITOIRE_PACK_V = 0.5
+        private const val SEUIL_TRANSITOIRE_PACK_V = 0.3
         const val MAX_HISTORIQUE_CELLULES = 600
         val FORMAT_HORODATAGE: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")
         val FORMAT_HEURE: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
