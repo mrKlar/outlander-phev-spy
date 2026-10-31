@@ -137,14 +137,15 @@ Chaque ligne de la matrice est une séance de capture : sondes Gen4
 Vérités terrain obligatoires à **chaque** capture, consignées au
 journal via l'écran de session avant ou juste après les lectures :
 
-- SOC affiché au tableau de bord (%) ;
+- SOC par les barres de jauge du cluster (N/16 — le compteur
+  n'affiche pas de % ; chaque barre ≈ 6,25 %, seuils inconnus) ;
 - autonomie affichée (km) ;
 - état du véhicule (READY ou non-READY) et charge AC en cours ou
   non ;
 - odomètre affiché (km), pour confronter la piste `22F0D0` ;
 - durée du repos avant la capture ;
-- pour une séance de charge : SOC de début et de fin et énergie
-  délivrée mesurée à la borne ou au compteur.
+- pour une séance de charge : barres (N/16) de début et de fin et
+  énergie délivrée mesurée à la borne ou au compteur.
 
 À défaut d'une de ces vérités terrain, la capture reste exploratoire
 et ne peut pas servir à promouvoir un DID.
@@ -176,7 +177,7 @@ Les statuts de confiance de la spec gouvernent toute promotion :
    comme une mesure.
 2. `CORRELE_TABLEAU_DE_BORD` : le DID répond sur le véhicule cible
    et sa valeur brute varie de façon cohérente avec une vérité
-   terrain journalisée (SOC affiché, autonomie) sur au moins deux
+   terrain journalisée (barres cluster N/16, autonomie) sur au moins deux
    lectures à des instants distincts.
 3. `VERIFIE` : l'équation complète (offset d'octet, longueur,
    échelle, unité) a été corrélée sur une charge/décharge étalonnée

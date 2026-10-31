@@ -204,7 +204,7 @@ private fun EcranSession(vm: SessionViewModel = viewModel()) {
             OutlinedTextField(
                 value = soc,
                 onValueChange = { soc = it },
-                label = { Text("SOC affiché (%)") },
+                label = { Text("Barres cluster (0–16)") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
                 modifier = Modifier.weight(1f).padding(end = 4.dp),

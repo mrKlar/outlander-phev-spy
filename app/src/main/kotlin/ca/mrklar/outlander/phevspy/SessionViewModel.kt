@@ -405,10 +405,9 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         ajouterLignes("Arrêt demandé.")
     }
 
-    fun consignerVeriteTerrain(socPourcent: String, autonomieKm: String) {
-        val soc = socPourcent.trim()
-        val autonomie = autonomieKm.trim()
-        if (soc.isEmpty() && autonomie.isEmpty()) {
+    fun consignerVeriteTerrain(barresCluster: String, autonomieKm: String) {
+        val parties = partiesVeriteTerrain(barresCluster, autonomieKm)
+        if (parties.isEmpty()) {
             ajouterLignes("Vérité terrain : aucun champ rempli, rien n'a été consigné.")
             return
         }
@@ -416,10 +415,6 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         if (journalCourant == null) {
             ajouterLignes("Non connecté : vérité terrain non consignée (aucun journal ouvert).")
             return
-        }
-        val parties = buildList {
-            if (soc.isNotEmpty()) add("SOC affiché: $soc%")
-            if (autonomie.isNotEmpty()) add("autonomie: $autonomie km")
         }
         viewModelScope.launch {
             try {
