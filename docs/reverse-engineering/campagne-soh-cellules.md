@@ -65,6 +65,55 @@ Non prouvé :
   obtenue : silence non concluant, jamais « ECU absent » ni « DID
   inexistant ».
 
+## Règle de preuve négative : ne jamais conclure « bloqué » sur un silence
+
+Un silence est un résultat d'essai, pas une propriété du véhicule.
+Avant d'écrire qu'un ECU, un DID ou une famille de données est
+inaccessible, la campagne doit avoir épuisé les axes indépendants
+suivants — sinon le verdict consigné est **« non concluant »** :
+
+1. **Contrôle positif dans la même séance** : au moins une requête
+   connue répond positivement avec le même adaptateur, le même
+   protocole et la même chaîne logicielle (par exemple légiféré 29
+   bits ou un DID déjà positif). Sans contrôle positif, l'échec peut
+   venir de l'adaptateur, du délai, du filtrage ou de notre code.
+2. **Voies d'adressage** : fonctionnelle (`18DB33F1`, réponse
+   cherchée sous l'en-tête attendu) **et** physique (`18DAxxF1`) en
+   29 bits ; fonctionnelle et physique en 11 bits lorsque l'ECU visé
+   a une adresse 11 bits plausible.
+3. **Sessions diagnostiques** : session par défaut, puis session
+   étendue physique (`0x10 03`, retour explicite `0x10 01`) pour
+   distinguer un DID absent d'un DID refusé par contexte.
+4. **États du véhicule** : accessoires, READY, charge AC et, si
+   l'occasion se présente, charge CHAdeMO ; véhicule fraîchement
+   réveillé et après quelques minutes dans le même état.
+5. **Adaptateurs** : reproduire le négatif avec un second adaptateur
+   de famille différente (clone contre référence STN/WiCAN) avant de
+   l'attribuer au véhicule.
+6. **Paramètres de liaison** : délais longs, flow control par défaut
+   puis bridé, présentation avec et sans reformattage quand l'outil
+   le permet — un timeout d'adaptateur n'est pas un refus d'ECU.
+7. **Passif séparément** : l'absence de trafic spontané se conclut
+   par état du véhicule (point 4), jamais sur une seule écoute.
+
+Taxonomie des verdicts, par réponse observée sur une lecture
+autorisée :
+
+| Observation | Verdict autorisé |
+|---|---|
+| Réponse positive | DID accessible dans ces conditions |
+| NRC `0x33` sur une lecture | DID/service présent mais **protégé** dans ces conditions |
+| NRC `0x31` répété sur les axes ci-dessus | DID vraisemblablement non supporté par cet ECU |
+| NRC `0x7F` (service non supporté) | Service absent sur cet ECU, pas « donnée bloquée » |
+| NRC `0x7E` (sous-fonction non supportée dans la session) | Mauvais contexte de session ; changer d'axe, pas conclure |
+| NRC `0x78` (réponse en attente) | L'ECU travaille ; attendre la réponse finale |
+| `NO DATA`, timeout, erreur ELM, `BUFFER FULL` | **Non concluant**, quelle que soit la répétition sur un seul axe |
+
+Le service SecurityAccess (`0x27`) reste hors liste blanche : on ne
+demande ni graine ni clé. La frontière de sécurité se prouve depuis
+l'extérieur, par un NRC `0x33` obtenu sur une lecture autorisée. En
+l'absence de `0x33`, personne n'invoque « c'est sûrement bloqué ».
+
 ## Matrice de captures corrélées
 
 Chaque ligne de la matrice est une séance de capture : sondes Gen4
