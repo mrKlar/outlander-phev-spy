@@ -184,3 +184,38 @@ valider au multimètre avant branchement). Conditions inchangées :
 listen-only, aucune trame émise, aucune terminaison ajoutée,
 aucun fil d'origine coupé, aucun calculateur débranché sous
 tension.
+
+## Procédure manuelle : état de la recherche (2026-10-31, après-midi)
+
+Seule procédure constructeur lisible : manuel d'atelier Outlander III
+2020 (génération précédente), « maintenance mode <vehicles with
+electric parking brake> », méthode au commutateur donnée en secours
+du MUT-III :
+<https://www.mmc-manuals.ru/manuals/outlander_iii/online/Service_Manual_2020/M1/html/M135101930001102ENG.html>
+
+1. P, contact ON sans démarrer, **pédale de frein enfoncée et
+   maintenue jusqu'à la coupure du contact**.
+2. EPB serré/desserré 10 fois, au moins 2 s entre actions, jusqu'au
+   clignotement voyant rouge + voyant du commutateur ; message
+   « PARKING BRAKE TEMPORARILY NOT AVAILABLE » (= état A observé par
+   le propriétaire : icône maintenance).
+3. Un desserrage EPB, puis **dans les 7 s** au moins 10 appuis AUTO
+   HOLD, puis un desserrage EPB.
+4. Succès : **voyant jaune EPB fixe** + « PARKING BRAKE SERVICE
+   REQUIRED ». Le manuel n'annonce aucun bruit de rétraction à ce
+   stade. Échec : attendre 60 s et recommencer. Ne pas serrer l'EPB
+   ni tirer le commutateur (annule le mode).
+5. Sortie : contact ON, tirer l'EPB ; mode normal quand voyant rouge
+   et voyant EPB restent fixes.
+
+Une page de même titre existe pour 2022 (NS22, probablement la GN)
+sur mitsubishitechinfo.com mais n'a pas pu être lue (connexion
+refusée) : rien ne confirme que la séquence soit identique sur la GN.
+Indices faibles (JustAnswer, go-parts, non lus en entier) : sur
+2022-2025, outil de diagnostic requis. Nissan T33 (même plateforme) :
+CONSULT en « work mode », aucune séquence manuelle fiable. Ne jamais
+repousser les pistons sans mode service confirmé (étriers détruits
+rapportés, mitsubishiforum.com 2017).
+
+Hypothèse à vérifier : le « voyant clé jaune allumé » noté par le
+propriétaire pourrait être l'indicateur de succès de l'étape 4.
