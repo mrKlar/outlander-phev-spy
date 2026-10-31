@@ -695,7 +695,15 @@ class ScanExecutor(
         emit(ScanEvent.PhaseStarted("suivi-cellules"))
         if (gardeAtrv(force = true, emit = emit) &&
             assurerProtocole(bits29 = true, emit = emit)
-        ) {
+        ) try {
+            // ST resserré (64 = 400 ms au lieu de FF = 1020 ms) : avec
+            // ST FF, chaque lecture prend ~1,1 s sur le clone et la
+            // paire 0178/0179 est lue à ~1,3 s d'écart — en transitoire
+            // d'accélération/régénération, les tensions bougent entre
+            // les deux lectures et fabriquent de faux deltas (séance
+            // conduite 2026-10-31, deltas -47..+134 apparents).
+            pace()
+            nourrirCompteurCan(session.setResponseTimeoutHex("64"))
             val timeout = config.identificationTimeoutMs
             var cycle = 0
             while (!arrete && currentCoroutineContext().isActive) {
@@ -713,6 +721,15 @@ class ScanExecutor(
                 emit(ScanEvent.Cellules(max, min, pack, soc, odo))
                 cycle++
                 delayFn(config.suiviIntervalleMs)
+            }
+        } finally {
+            pace()
+            try {
+                session.setResponseTimeoutHex("FF")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Restitution best-effort, comme au balayage.
             }
         }
         emettreArretSiNecessaire(emit)

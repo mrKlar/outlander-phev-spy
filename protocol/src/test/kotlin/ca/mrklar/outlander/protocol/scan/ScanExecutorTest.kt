@@ -625,6 +625,10 @@ class ScanExecutorTest {
     fun suiviCellulesDeuxCycles() = runTest(UnconfinedTestDispatcher()) {
         val script = buildList {
             add(atrv()); add(ok("ATSP7")); add(ok("ATCP18"))
+            // ATST resserré pendant le suivi (séance conduite : paire
+            // 0178/0179 lue à ~1,3 s d'écart avec ST FF, faux deltas en
+            // transitoire), restitué en fin de flux.
+            add(ok("ATST64"))
             addAll(progFonc29())
             add(ex("220178", "18 DA F1 DB 05 62 01 78 10 36 \r>"))
             addAll(prog29("DB"))
@@ -636,6 +640,7 @@ class ScanExecutorTest {
             add(ex("220179", "18 DA F1 DB 05 62 01 79 10 2E \r>"))
             add(ex("220106", "18 DA F1 DB 05 62 01 06 9B 8D \r>"))
             add(ex("2201D1", "18 DA F1 DB 05 62 01 D1 00 AF \r>"))
+            add(ok("ATSTFF"))
         }
         val transport = ScriptedElmTransport(script)
         val journal = InMemoryJournal()
