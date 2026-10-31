@@ -124,10 +124,14 @@ internal class ChannelProgrammer(private val session: ElmSession) {
     suspend fun program(channel: EcuChannel, timeoutMs: Long, phase: String) {
         val cle = cle(channel)
         if (session.cleCanalProgramme == cle) return
-        for (commande in commandes(channel)) {
+        // Cache posé seulement si chaque commande a répondu OK : un ATSH
+        // perdu dans une désynchro (session-20261031-151341 seq 710)
+        // laissait l'en-tête fonctionnel en place, cache « DB » à tort.
+        val toutOk = commandes(channel).all { commande ->
             session.transact(commande, timeoutMs = timeoutMs, phase = phase, kind = "at")
+                .status == ElmStatus.POSITIVE
         }
-        session.cleCanalProgramme = cle
+        session.cleCanalProgramme = if (toutOk) cle else null
     }
 
     /** Émet `ATFCSD` + [fcsdHex] collé (FC bridée `300A0A`) ; ne touche pas au cache de canal. */

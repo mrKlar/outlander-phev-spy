@@ -477,7 +477,9 @@ private fun EcranConduite(
 
     fun enV(mv: Int?): String = mv?.let { "%.3f".format(it / 1000.0) } ?: "-.---"
 
-    val cellulesLues = state.cellulesValeurs.filterNotNull()
+    // Suivi actif : l'écran montre le direct ; l'instantané des 96
+    // cellules seulement hors suivi (il figeait l'écran, 2026-10-31).
+    val cellulesLues = if (state.suiviActif) emptyList() else state.cellulesValeurs.filterNotNull()
     val deltaCellules = if (cellulesLues.size >= 2) {
         cellulesLues.max() - cellulesLues.min()
     } else {
@@ -519,6 +521,14 @@ private fun EcranConduite(
             )
         }
 
+        if (state.suiviActif && state.deltaTransitoire) {
+            Text(
+                "Transitoire (pack en mouvement) : Δ affiché = dernier cycle stable",
+                fontFamily = FontFamily.Monospace,
+                fontSize = 15.sp,
+                color = Color(0xFFE65100),
+            )
+        }
         val points = state.historiqueCellules
         if (cellulesLues.size >= 2) {
             GraphiqueBarresCellules(

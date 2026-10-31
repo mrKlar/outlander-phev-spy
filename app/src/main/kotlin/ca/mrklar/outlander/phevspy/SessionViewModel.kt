@@ -61,6 +61,9 @@ data class SessionUiState(
     val suiviMaj: String? = null,
     val suiviCycles: Int = 0,
     val odoKm: Int? = null,
+    // Dernier cycle pris en transitoire (Δ < 0 ou pack qui bouge) :
+    // la paire 0178/0179 est lue à ~0,65 s d'écart, son Δ n'y vaut rien.
+    val deltaTransitoire: Boolean = false,
     // Lecture des 96 cellules (DID 0114..0173, mV candidats confirmés
     // par somme vs pack le 2026-10-31) : brut par index, null = pas lu.
     val cellulesValeurs: List<Int?> = emptyList(),
@@ -371,14 +374,23 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
     private fun mettreAJourSuivi(evenement: ScanEvent.Cellules) {
         val maxMv = evenement.maxBrut
         val minMv = evenement.minBrut
-        val delta = if (maxMv != null && minMv != null) maxMv - minMv else null
+        val brut = if (maxMv != null && minMv != null) maxMv - minMv else null
         val heure = LocalTime.now().format(FORMAT_HEURE)
         _state.update { etat ->
+            // Session 20261031-151341 : Δ négatifs (−69 mV) et pics
+            // (+78 mV) seulement quand le pack bouge de plusieurs volts
+            // entre cycles ; au régime stable Δ = 10-12 mV, comme les
+            // 96 cellules. Seuls les cycles stables comptent.
+            val pack = evenement.packBrut?.let { it * 0.01 }
+            val transitoire = brut == null || brut < 0 || pack == null || etat.packVolts == null ||
+                kotlin.math.abs(pack - etat.packVolts) > SEUIL_TRANSITOIRE_PACK_V
+            val delta = if (transitoire) null else brut
             etat.copy(
+                deltaTransitoire = transitoire,
                 cellMaxMv = maxMv,
                 cellMinMv = minMv,
-                cellDeltaMv = delta,
-                packVolts = evenement.packBrut?.let { it * 0.01 },
+                cellDeltaMv = delta ?: etat.cellDeltaMv,
+                packVolts = pack,
                 socBrut = evenement.socBrut,
                 deltaMinSession = when {
                     delta == null -> etat.deltaMinSession
@@ -390,7 +402,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
                     etat.deltaMaxSession == null -> delta
                     else -> maxOf(etat.deltaMaxSession, delta)
                 },
-                historiqueCellules = if (maxMv != null && minMv != null) {
+                historiqueCellules = if (!transitoire && maxMv != null && minMv != null) {
                     (etat.historiqueCellules + (maxMv to minMv)).takeLast(MAX_HISTORIQUE_CELLULES)
                 } else {
                     etat.historiqueCellules
@@ -652,6 +664,10 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
 
     private companion object {
         const val MAX_LIGNES = 400
+        // ponytail: seuil fixe de stabilité du pack entre deux cycles
+        // (~3-4 s) ; au repos le pack varie de 0,02-0,05 V, en
+        // transitoire de 1 à 15 V. Ajuster si trop de cycles écartés.
+        private const val SEUIL_TRANSITOIRE_PACK_V = 0.5
         const val MAX_HISTORIQUE_CELLULES = 600
         val FORMAT_HORODATAGE: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")
         val FORMAT_HEURE: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")

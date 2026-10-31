@@ -167,6 +167,31 @@ class ElmSessionTest {
         session.close()
     }
 
+    // (4d) Annulation en vol (session-20261031-151341 seq 704-710) :
+    // la réponse tardive de la commande annulée est jetée par la
+    // transaction suivante, qui reçoit la sienne.
+    @Test
+    fun resynchroApresAnnulation() = runTest(UnconfinedTestDispatcher()) {
+        val transport = ScriptedElmTransport(
+            listOf(
+                exchange("015A"),
+                exchange("ATRV", "13.9V\r\r>"),
+            ),
+        )
+        val journal = InMemoryJournal()
+        val session = session(transport, journal)
+        val enVol = launch { session.transact("015A", timeoutMs = 5000) }
+        delay(100)
+        enVol.cancel()
+        transport.inject("18 DA F1 15 03 41 5A 00 \r\r>")
+
+        val suivante = session.transact("ATRV", timeoutMs = 300)
+
+        assertEquals("13.9V", suivante.rawText.trim())
+        assertTrue(journal.events.any { it.note?.startsWith("resynchro après annulation") == true })
+        session.close()
+    }
+
     // (4c) Trames suivies de STOPPED : elles sont à la commande
     // interrompue, la réponse n'est pas positive.
     @Test

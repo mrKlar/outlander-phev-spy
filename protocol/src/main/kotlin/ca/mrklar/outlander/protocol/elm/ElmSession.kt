@@ -134,6 +134,32 @@ class ElmSession(
         continuesWhile: (ElmResponse) -> Boolean = { false },
         enrich: (JournalEvent) -> JournalEvent = { it },
     ): ElmResponse = mutex.withLock {
+        if (resyncAuProchain) {
+            resyncAuProchain = false
+            resynchroniser("annulation précédente", phase)
+        }
+        // Annulée en vol (changement de phase), la réponse de l'ELM
+        // arrivera quand même : la prochaine transaction la jette
+        // d'abord (session-20261031-151341 seq 704-710).
+        try {
+            transactSousVerrou(command, timeoutMs, phase, kind, continuesWhile, enrich)
+        } catch (e: CancellationException) {
+            resyncAuProchain = true
+            throw e
+        }
+    }
+
+    @Volatile
+    private var resyncAuProchain = false
+
+    private suspend fun transactSousVerrou(
+        command: String,
+        timeoutMs: Long,
+        phase: String,
+        kind: String?,
+        continuesWhile: (ElmResponse) -> Boolean,
+        enrich: (JournalEvent) -> JournalEvent,
+    ): ElmResponse {
         val elmAvant = elmSnapshot()
         val octets = (command + "\r").toByteArray(Charsets.ISO_8859_1)
         val debut = clockMono()
@@ -184,7 +210,7 @@ class ElmSession(
         if (!canalFerme && (reponse.status == ElmStatus.TIMEOUT || reponse.estStopped())) {
             resynchroniser(command, phase)
         }
-        reponse
+        return reponse
     }
 
     private fun ElmResponse.estStopped(): Boolean =
