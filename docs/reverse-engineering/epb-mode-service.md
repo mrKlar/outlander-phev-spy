@@ -6,6 +6,10 @@ mode service/maintenance du frein de stationnement électrique (EPB)
 pour le remplacement des plaquettes arrière, et déterminer ce qu'une
 application pourrait un jour offrir sans compromettre la sécurité.
 
+Exécution : plan pas à pas (identification de l'ECU, diff par état,
+écoute passive, voie documentaire) dans
+[`2026-11-01-decouverte-sequence-maintenance-epb.md`](../superpowers/plans/2026-11-01-decouverte-sequence-maintenance-epb.md).
+
 ## Frontière de sécurité
 
 Ce volet est, à ce stade, **observation et lectures seulement**.
@@ -78,11 +82,16 @@ Traitement dans ce projet :
 ### Ce que dit notre recherche 2023+
 
 Le freinage et l'EPB de la 4e génération sont vraisemblablement liés
-à l'architecture Alliance/ESC, mais notre cartographie actuelle ne
-nomme pas encore les répondants `0xDB`, `0xDE` et `0xE5`. Tant que
-l'ECU qui porte l'EPB n'est pas identifié par ses DID
-d'identification (`F1xx`) et corrélé aux états observés, parler d'une
-« routine EPB » précise serait inventer.
+à l'architecture Alliance/ESC. Depuis la séance du 2026-10-31,
+`F194` nomme `DE` = chargeur embarqué (« OBC27 ») et `E5` =
+inverseur arrière (« INV-RE ») ; `DB` porte les DID batterie.
+Aucun des trois n'est un candidat freinage, et aucun n'a montré de
+variation entre états EPB. Restent non identifiés : `DA`, `DC`,
+`DD`, `DF`, les répondants légiférés `15`, `2D`, `E2` et l'ECU
+11 bits `743` (« P33_SW_07.07.R1 »). Tant que l'ECU qui porte l'EPB
+n'est pas identifié par ses DID d'identification (`F1xx`), sa
+liste de DTC supportés et un diff corrélé aux états observés,
+parler d'une « routine EPB » précise serait inventer.
 
 ## Questions de recherche
 

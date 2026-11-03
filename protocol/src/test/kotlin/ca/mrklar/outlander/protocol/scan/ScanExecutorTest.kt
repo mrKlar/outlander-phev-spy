@@ -714,9 +714,10 @@ class ScanExecutorTest {
             add(ex("22F189", "18DAF1DB 03 7F 22 31\r>"))
             add(ex("1901FF", "18DAF1DB 05 59 01 FF 00 00\r>"))
             add(nd("1902FF")); add(nd("190A"))
-            // DE, E5 puis cibles EPB elargies (DA/DC/DD/DF) : six
-            // lectures muettes chacune.
-            for (addr in listOf("DE", "E5", "DA", "DC", "DD", "DF")) {
+            // DE, E5 puis cibles EPB élargies (DA/DC/DD/DF et
+            // répondants légiférés 15/2D/E2, spec §7.2 du
+            // 2026-11-01) : six lectures muettes chacune.
+            for (addr in listOf("DE", "E5", "DA", "DC", "DD", "DF", "15", "2D", "E2")) {
                 addAll(prog29(addr))
                 for (r in listOf("22F186", "22F187", "22F189", "1901FF", "1902FF", "190A")) add(nd(r))
             }
@@ -770,7 +771,7 @@ class ScanExecutorTest {
                     "F189=no_data, DTC01=no_data, DTC02=no_data, DTC0A=no_data",
                 "EPB snapshot 18DAF1E5: F186=no_data, F187=no_data, " +
                     "F189=no_data, DTC01=no_data, DTC02=no_data, DTC0A=no_data",
-            ) + listOf("DA", "DC", "DD", "DF").map { adresse ->
+            ) + listOf("DA", "DC", "DD", "DF", "15", "2D", "E2").map { adresse ->
                 "EPB snapshot 18DAF1$adresse: F186=no_data, F187=no_data, " +
                     "F189=no_data, DTC01=no_data, DTC02=no_data, DTC0A=no_data"
             },
@@ -800,6 +801,84 @@ class ScanExecutorTest {
                 "premier octet interdit: « $ecriture »",
             )
         }
+
+        session.close()
+    }
+
+    @Test
+    fun snapshotEpb743LectureSeule() = runTest(UnconfinedTestDispatcher()) {
+        val script = buildList {
+            add(atrv()); add(ok("ATSP6"))
+            addAll(prog11("743", "763"))
+            add(ex("22F186", "763 04 62 F1 86 01\r>"))
+            add(nd("22F187")); add(nd("22F189"))
+            add(ex("1901FF", "763 05 59 01 FF 00 00\r>"))
+            add(nd("1902FF")); add(nd("190A"))
+        }
+        val transport = ScriptedElmTransport(script)
+        val journal = InMemoryJournal()
+        val (session, executor) = executor(transport, journal)
+
+        val evenements = executor.epb743Snapshot().toList()
+
+        assertEquals(
+            listOf("epb-observation" to "763"),
+            evenements.filterIsInstance<ScanEvent.EcuResponded>()
+                .map { it.phase to it.headerHex },
+        )
+        assertEquals(
+            listOf(
+                "EPB snapshot 763: F186=positive:1octets, F187=no_data, " +
+                    "F189=no_data, DTC01=positive:3octets, DTC02=no_data, DTC0A=no_data",
+            ),
+            evenements.filterIsInstance<ScanEvent.Note>().map { it.message }
+                .filter { it.startsWith("EPB snapshot") },
+        )
+        assertEquals(script.size, transport.writtenTexts.size)
+        assertTrue(transport.mismatches.isEmpty(), "mismatches=${transport.mismatches}")
+        assertEcrituresAutorisees(transport)
+
+        session.close()
+    }
+
+    @Test
+    fun balayagesEpbParEcuPhysiques() = runTest(UnconfinedTestDispatcher()) {
+        val adresses29 = listOf("DB", "DE", "E5", "DA", "DC", "DD", "DF", "15", "2D", "E2")
+        val script = buildList {
+            for ((indice, addr) in adresses29.withIndex()) {
+                add(ok("ATST64"))
+                if (indice == 0) { add(ok("ATSP7")); add(ok("ATCP18")) }
+                add(atrv())
+                addAll(prog29(addr))
+                add(nd("220100"))
+                add(ex("220101", "18DAF1$addr 04 62 01 01 AA\r>"))
+                add(ok("ATSTFF"))
+            }
+            // 743 en dernier, protocole 11 bits.
+            add(ok("ATST64")); add(ok("ATSP6")); add(atrv())
+            addAll(prog11("743", "763"))
+            add(nd("220100"))
+            add(ex("220101", "763 04 62 01 01 BB\r>"))
+            add(ok("ATSTFF"))
+        }
+        val transport = ScriptedElmTransport(script)
+        val journal = InMemoryJournal()
+        val (session, executor) = executor(transport, journal)
+
+        val resultats = executor.balayagesEpbParEcu(0x0100..0x0101)
+
+        assertEquals(
+            adresses29.map { "18DAF1$it" } + "763",
+            resultats.map { it.first },
+        )
+        for ((_, resultat) in resultats) {
+            assertEquals(listOf(0x0101), resultat.positives)
+            assertEquals(1, resultat.noDataCount)
+            assertNull(resultat.stoppedReason)
+        }
+        assertEquals(script.size, transport.writtenTexts.size)
+        assertTrue(transport.mismatches.isEmpty(), "mismatches=${transport.mismatches}")
+        assertEcrituresAutorisees(transport)
 
         session.close()
     }

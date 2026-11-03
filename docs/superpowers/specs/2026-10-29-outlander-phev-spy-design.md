@@ -1,7 +1,7 @@
 # Outlander PHEV Spy — Spécification de design
 
 - Date : 2026-10-29
-- Statut : design approuvé, aucun code source à cette date
+- Statut : design approuvé, aucun code source à cette date. Mise à jour 2026-11-01 : implémenté jusqu'au jalon M3 inclus (première session véhicule le 2026-10-31, voir `docs/reverse-engineering/seance-2026-10-31.md`) ; M4 en cours. Le présent document reste la référence de périmètre et de liste blanche.
 - Approche retenue : « découverte 29 bits/UDS, décodeurs data-driven, liste blanche lecture seule »
 - Source de vérité : [synthèse décisionnelle du 2026-10-29](../../recherche/2026-10-29-00-synthese-decisions.md) et rapports détaillés `01` à `04` du même dossier
 - Langue du projet : documentation et commits en français
@@ -523,7 +523,8 @@ Critères d'arrêt : section 5.5.
 **Lectures récurrentes ajoutées après la première session (2026-10-31).** Aucun nouveau service : uniquement `0x22` en session par défaut, mêmes gardes §5.5.
 - *Suivi cellules* (DB) : cycle `220106`, `220178`, `220179`, `220106`, `2201D1`, `22F0D0` tous les 30 cycles, ST `64`. Le pack lu avant et après la paire max/min sert à écarter les cycles transitoires.
 - *Lecture des cellules* : `220114`–`220173` chez DB, une relecture par DID en échec.
-- *Observation EPB* : à chaque étape manuelle consignée par le propriétaire, identification `F186`/`F187`/`F189`, DTC `1901FF`/`1902FF`/`190A` sur `DA`, `DB`, `DC`, `DD`, `DE`, `DF`, `E5`, puis l'étape 7 ; en capture complète, balayage fonctionnel `22 0100`–`01FF` (en-tête `18DB33F1`, toutes réponses `18DAF1xx` journalisées). Observation seulement : aucun actionnement, aucun `0x31`/`0x2F`/`0x2E`/`0x27`, la séquence d'entrée et de sortie du mode service est faite à la main par le propriétaire.
+- *Observation EPB* : à chaque étape manuelle consignée par le propriétaire, identification `F186`/`F187`/`F189`, DTC `1901FF`/`1902FF`/`190A` sur `DA`, `DB`, `DC`, `DD`, `DE`, `DF`, `E5`, puis l'étape 7 ; en capture complète, snapshot 11 bits `743` puis balayages physiques `22 0100`–`01FF` canal par canal (ajout 2026-11-01, remplace le balayage fonctionnel qui ne retenait que le répondant attendu). Observation seulement : aucun actionnement, aucun `0x31`/`0x2F`/`0x2E`/`0x27`, la séquence d'entrée et de sortie du mode service est faite à la main par le propriétaire.
+- *Découverte EPB (ajout 2026-11-01, plan `2026-11-01-decouverte-sequence-maintenance-epb.md`)* : aucun nouveau service. Identification `22F180`–`22F19F` et DTC `19 01/02/0A` en physique 29 bits sur les répondants vus le 2026-10-31 (`DA`, `DB`, `DC`, `DD`, `DE`, `DF`, `E5`, `15`, `2D`, `E2`) et en physique 11 bits sur `743` ; balayages physiques bornés `22 0100`–`01FF` canal par canal pour attribuer chaque réponse à son ECU dans le diff entre états EPB. L'écoute CAN passive `listen-only` (WiCAN) est hors app : aucune trame émise, aucune terminaison ajoutée.
 
 ### 7.3 Interprétation des issues possibles
 

@@ -300,9 +300,10 @@ private fun EcranSession(vm: SessionViewModel = viewModel()) {
         Text("Cellules — suivi en continu", style = MaterialTheme.typography.titleMedium)
         Text(
             "Delta entre cellule max (DID 0178) et min (0179), relus en " +
-                "boucle. Conversions candidates (mV directs, pack ×0,01 V) " +
-                "de la séance à SOC 100 % — pas encore corrélées à d'autres " +
-                "SOC. À démarrer à l'arrêt; l'écran ne demande aucune " +
+                "boucle. Conversions candidates (mV directs, pack ×0,01 V), " +
+                "cohérentes entre elles aux SOC observés le 2026-10-31 " +
+                "mais non étalonnées (statut communautaire non validé). " +
+                "À démarrer à l'arrêt; l'écran ne demande aucune " +
                 "interaction ensuite.",
             style = MaterialTheme.typography.bodySmall,
         )
@@ -439,7 +440,7 @@ private fun EcranSession(vm: SessionViewModel = viewModel()) {
             onClick = { vm.lancerCaptureEpbComplete(etapeEpb, observationEpb) },
             enabled = actionsSessionActives(connecte, state.scanRunning),
             modifier = Modifier.padding(top = 4.dp),
-        ) { Text("Capture complète : + balayage DID tous ECU (~3 min)") }
+        ) { Text("Capture complète : + balayage DID par ECU (~30 min estimées)") }
         Text(
             "Refaire la capture à chaque étape sans déconnecter; exporter le journal à la fin.",
             style = MaterialTheme.typography.bodySmall,
@@ -463,9 +464,10 @@ private fun EcranSession(vm: SessionViewModel = viewModel()) {
  * min→max, lisible d'un coup d'œil sur support. Aucune interaction
  * requise une fois le suivi démarré à l'arrêt ; l'écran reste allumé.
  *
- * Honnêteté des données : aucune tension par cellule individuelle
- * n'est connue à ce jour — chaque barre est la plage min→max d'une
- * lecture (DID 0179/0178, candidats mV), pas une cellule.
+ * Honnêteté des données : en suivi, chaque barre est la plage
+ * min→max d'un cycle (DID 0179/0178, candidats mV), pas une
+ * cellule. L'instantané des 96 cellules (DID 0114–0173, séance
+ * du 2026-10-31) ne s'affiche que hors suivi.
  */
 @Composable
 private fun EcranConduite(

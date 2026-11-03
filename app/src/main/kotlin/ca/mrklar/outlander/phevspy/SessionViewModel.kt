@@ -545,10 +545,14 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
-     * Capture EPB complète : snapshot habituel puis balayage
-     * fonctionnel 22 0100-01FF (tous les répondants 29 bits au
-     * journal, ~2-3 min), pour comparer octet par octet les états
-     * normal / maintenance / sortie. Lectures 0x22 seulement.
+     * Capture EPB complète : snapshots 29 bits et 743, puis
+     * balayages physiques 22 0100-01FF un ECU à la fois (11
+     * canaux, attribution par ECU pour le diff hors ligne),
+     * pour comparer octet par octet les états normal /
+     * maintenance / sortie. Lectures 0x22 seulement. Durée
+     * estimée ~30 min d'après les temps de lecture mesurés le
+     * 2026-10-31 (~0,65 s par DID sur le clone) : maintenir le
+     * 12 V pendant la capture.
      */
     fun lancerCaptureEpbComplete(etape: String, observation: String) {
         consignerEtapeEpb("$etape [complète]", observation)
@@ -558,14 +562,19 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
             return
         }
         _state.update { it.copy(scanRunning = true, error = null) }
-        ajouterLignes("Démarrage : capture EPB complète (lecture seule, ~3 min)")
+        ajouterLignes("Démarrage : capture EPB complète (lecture seule, ~30 min estimées)")
         scanJob = viewModelScope.launch {
             try {
                 executor.epbObservationSnapshot(true).collect { ajouterLignes(formater(it)) }
-                val resultat = executor.sweepFunctionalDidRange(EcuChannel.BMU_DB, 0x0100..0x01FF)
+                executor.epb743Snapshot(true).collect { ajouterLignes(formater(it)) }
+                val resultats = executor.balayagesEpbParEcu(0x0100..0x01FF)
+                val bilan = resultats.joinToString(", ") { (entete, r) ->
+                    "$entete: ${r.positives.size} positifs"
+                }
+                val arret = resultats.mapNotNull { it.second.stoppedReason }.firstOrNull()
                 ajouterLignes(
-                    "Capture EPB complète terminée (balayage : ${resultat.positives.size} DID DB positifs" +
-                        (resultat.stoppedReason?.let { ", arrêt : $it" } ?: "") + ").",
+                    "Capture EPB complète terminée (balayages : $bilan" +
+                        (arret?.let { ", arrêt : $it" } ?: "") + ").",
                 )
             } catch (e: CancellationException) {
                 ajouterLignes("Capture EPB interrompue.")

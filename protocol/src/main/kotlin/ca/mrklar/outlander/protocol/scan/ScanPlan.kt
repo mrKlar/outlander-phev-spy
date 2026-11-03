@@ -862,40 +862,93 @@ class ScanExecutor(
     }
 
     private suspend fun corpsEpbObservation(emit: suspend (ScanEvent) -> Unit) {
-        val timeout = config.identificationTimeoutMs
         if (!assurerProtocole(bits29 = true, emit = emit)) return
         val dejaEmis = mutableSetOf<EcuChannel>()
         for ((channel, adresse) in CIBLES_EPB) {
             if (arrete) return
-            val entete = "18DAF1%02X".format(adresse)
-            val f186 = lireDid(channel, 0xF186, timeout, emit)
-            val f187 = lireDid(channel, 0xF187, timeout, emit)
-            val f189 = lireDid(channel, 0xF189, timeout, emit)
-            val dtc01 = appelUdsAvecRetente("1901FF", emit) {
-                uds.readDtc(channel, 0x01, 0xFF, timeoutMs = timeout, phase = phaseCourante)
-            }
-            val dtc02 = appelUdsAvecRetente("1902FF", emit) {
-                uds.readDtc(channel, 0x02, 0xFF, timeoutMs = timeout, phase = phaseCourante)
-            }
-            val dtc0a = appelUdsAvecRetente("190A", emit) {
-                uds.readDtc(channel, 0x0A, null, timeoutMs = timeout, phase = phaseCourante)
-            }
-            val reponses = listOf(f186, f187, f189, dtc01, dtc02, dtc0a)
-            if (reponses.any { it is UdsReply.Positive || it is UdsReply.Negative } &&
-                dejaEmis.add(channel)
-            ) {
-                canauxRepondants += channel
-                emit(ScanEvent.EcuResponded(phaseCourante, entete))
-            }
-            val note = "EPB snapshot $entete: F186=${resumeReply(f186)}, " +
-                "F187=${resumeReply(f187)}, F189=${resumeReply(f189)}, " +
-                "DTC01=${resumeReply(dtc01)}, DTC02=${resumeReply(dtc02)}, " +
-                "DTC0A=${resumeReply(dtc0a)}"
-            journalNote(note)
-            emit(ScanEvent.Note(note))
+            snapshotIdentifiantsEpb(channel, "18DAF1%02X".format(adresse), emit, dejaEmis)
             if (arrete) return
         }
         corpsGen4(emit)
+    }
+
+    /** Identifiants `F186`/`F187`/`F189` et DTC d'un canal, note de synthèse EPB. */
+    private suspend fun snapshotIdentifiantsEpb(
+        channel: EcuChannel,
+        entete: String,
+        emit: suspend (ScanEvent) -> Unit,
+        dejaEmis: MutableSet<EcuChannel>,
+    ) {
+        val timeout = config.identificationTimeoutMs
+        val f186 = lireDid(channel, 0xF186, timeout, emit)
+        val f187 = lireDid(channel, 0xF187, timeout, emit)
+        val f189 = lireDid(channel, 0xF189, timeout, emit)
+        val dtc01 = appelUdsAvecRetente("1901FF", emit) {
+            uds.readDtc(channel, 0x01, 0xFF, timeoutMs = timeout, phase = phaseCourante)
+        }
+        val dtc02 = appelUdsAvecRetente("1902FF", emit) {
+            uds.readDtc(channel, 0x02, 0xFF, timeoutMs = timeout, phase = phaseCourante)
+        }
+        val dtc0a = appelUdsAvecRetente("190A", emit) {
+            uds.readDtc(channel, 0x0A, null, timeoutMs = timeout, phase = phaseCourante)
+        }
+        val reponses = listOf(f186, f187, f189, dtc01, dtc02, dtc0a)
+        if (reponses.any { it is UdsReply.Positive || it is UdsReply.Negative } &&
+            dejaEmis.add(channel)
+        ) {
+            canauxRepondants += channel
+            emit(ScanEvent.EcuResponded(phaseCourante, entete))
+        }
+        val note = "EPB snapshot $entete: F186=${resumeReply(f186)}, " +
+            "F187=${resumeReply(f187)}, F189=${resumeReply(f189)}, " +
+            "DTC01=${resumeReply(dtc01)}, DTC02=${resumeReply(dtc02)}, " +
+            "DTC0A=${resumeReply(dtc0a)}"
+        journalNote(note)
+        emit(ScanEvent.Note(note))
+    }
+
+    /**
+     * Même snapshot d'identifiants sur l'ECU 11 bits `743`→`763`,
+     * seul répondant 11 bits de la séance du 2026-10-31 et jamais
+     * lu par les snapshots 29 bits (plan de découverte EPB du
+     * 2026-11-01, spec §7.2). Lectures `0x22`/`0x19` seulement.
+     */
+    fun epb743Snapshot(vehicleReady: Boolean = true): Flow<ScanEvent> = flow {
+        this@ScanExecutor.vehicleReady = vehicleReady
+        val collecteur = this
+        val emit: suspend (ScanEvent) -> Unit = { collecteur.emit(it) }
+        phaseCourante = "epb-observation"
+        emit(ScanEvent.PhaseStarted("epb-observation"))
+        if (gardeAtrv(force = true, emit = emit) &&
+            assurerProtocole(bits29 = false, emit = emit) && !arrete
+        ) {
+            snapshotIdentifiantsEpb(CIBLE_EPB_11_BITS, "763", emit, mutableSetOf())
+        }
+        emettreArretSiNecessaire(emit)
+        emit(ScanEvent.PhaseFinished("epb-observation"))
+    }
+
+    /**
+     * Balayages physiques bornés [range], un canal [CIBLES_EPB] à
+     * la fois puis `743`, pour attribuer chaque réponse à son ECU
+     * dans le diff entre états EPB — là où le balayage fonctionnel
+     * ne retient que le répondant attendu. S'arrête dès qu'un
+     * balayage rapporte une raison d'arrêt.
+     */
+    suspend fun balayagesEpbParEcu(
+        range: IntRange = 0x0100..0x01FF,
+        vehicleReady: Boolean = true,
+    ): List<Pair<String, SweepResult>> {
+        val resultats = mutableListOf<Pair<String, SweepResult>>()
+        for ((channel, adresse) in CIBLES_EPB) {
+            val resultat = sweepDidRange(channel, range, vehicleReady = vehicleReady)
+            resultats += "18DAF1%02X".format(adresse) to resultat
+            if (resultat.stoppedReason != null) return resultats
+        }
+        resultats += "763" to sweepDidRange(
+            CIBLE_EPB_11_BITS, range, vehicleReady = vehicleReady,
+        )
+        return resultats
     }
 
     private suspend fun corpsGen4(
@@ -1178,7 +1231,9 @@ class ScanExecutor(
         /**
          * Cibles des snapshots EPB : [CIBLES_29] plus les autres ECU
          * logiques vus répondre au balayage fonctionnel du
-         * 2026-10-31 (DA, DC, DD, DF). L'ECU qui porte l'EPB n'est
+         * 2026-10-31 (DA, DC, DD, DF) et les répondants légiférés
+         * de `0100` de la même séance (15, 2D, E2), ajoutés par la
+         * spec §7.2 le 2026-11-01. L'ECU qui porte l'EPB n'est
          * pas encore identifié ; DB (BMU), DE (OBC) et E5 (inverseur
          * arrière, F194 « INV-RE ») n'ont rien montré entre états.
          */
@@ -1187,7 +1242,13 @@ class ScanExecutor(
             EcuChannel.logical29(0xDC) to 0xDC,
             EcuChannel.logical29(0xDD) to 0xDD,
             EcuChannel.logical29(0xDF) to 0xDF,
+            EcuChannel.logical29(0x15) to 0x15,
+            EcuChannel.logical29(0x2D) to 0x2D,
+            EcuChannel.logical29(0xE2) to 0xE2,
         )
+
+        /** Seul répondant 11 bits de la séance du 2026-10-31 (« P33_SW_07.07.R1 »). */
+        val CIBLE_EPB_11_BITS: EcuChannel = EcuChannel.physical11(0x743, 0x763)
 
         /** DID d'identification : 6 nommés, puis le reste de F180–F19F en ordre. */
         val DIDS_IDENTIFICATION: List<Int> = run {
