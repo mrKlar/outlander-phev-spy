@@ -127,6 +127,19 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    /** Connexion à un adaptateur Wi-Fi (ex. WiCAN PRO : hôte du point d'accès, port ELM327 35000). */
+    fun connecterTcp(hote: String, portTexte: String) {
+        val device = try {
+            val port = portTexte.trim().toIntOrNull()
+                ?: throw IllegalArgumentException("port TCP invalide : « $portTexte »")
+            ElmDevice.tcp(hote, port)
+        } catch (e: IllegalArgumentException) {
+            signalerErreur("Adaptateur Wi-Fi : ${e.message ?: e}")
+            return
+        }
+        connecter(device)
+    }
+
     fun connecter(device: ElmDevice) {
         if (_state.value.connectingName != null || session != null) return
         _state.update { it.copy(connectingName = device.displayName, error = null) }

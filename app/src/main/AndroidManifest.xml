@@ -6,6 +6,9 @@
         android:name="android.permission.BLUETOOTH_SCAN"
         android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- Adaptateurs ELM327 Wi-Fi (ex. WiCAN PRO) joints en TCP local ;
+         l'app ne parle qu'à l'adresse saisie par le propriétaire. -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <uses-feature
         android:name="android.hardware.bluetooth_le"

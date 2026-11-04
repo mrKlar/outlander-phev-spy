@@ -4,6 +4,7 @@ import android.content.Context
 import ca.mrklar.outlander.protocol.transport.ElmDevice
 import ca.mrklar.outlander.protocol.transport.ElmTransport
 import ca.mrklar.outlander.protocol.transport.ElmTransportKind
+import ca.mrklar.outlander.protocol.transport.TcpElmTransport
 import com.juul.kable.Advertisement
 import kotlinx.coroutines.CoroutineScope
 import java.util.concurrent.ConcurrentHashMap
@@ -36,7 +37,13 @@ class AndroidTransportFactory(context: Context) {
                 BleTransport.connect(advertisement, scope)
             }
 
-            ElmTransportKind.TCP, ElmTransportKind.REPLAY ->
+            ElmTransportKind.TCP -> {
+                val (hote, port) = ElmDevice.parseTcpId(device.id)
+                    ?: throw IllegalArgumentException("adresse TCP invalide : ${device.id}")
+                TcpElmTransport.connect(hote, port)
+            }
+
+            ElmTransportKind.REPLAY ->
                 throw IllegalArgumentException(
                     "Transport ${device.kind} non géré par la fabrique Android (pur JVM côté :protocol)",
                 )

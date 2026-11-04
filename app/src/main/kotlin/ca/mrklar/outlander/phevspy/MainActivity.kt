@@ -87,6 +87,8 @@ private fun EcranSession(vm: SessionViewModel = viewModel()) {
     var soc by rememberSaveable { mutableStateOf("") }
     var autonomie by rememberSaveable { mutableStateOf("") }
     var saisieConsole by rememberSaveable { mutableStateOf("") }
+    var hoteWifi by rememberSaveable { mutableStateOf("192.168.0.10") }
+    var portWifi by rememberSaveable { mutableStateOf("35000") }
     var etapeEpb by rememberSaveable { mutableStateOf("Repos, EPB serré") }
     var observationEpb by rememberSaveable { mutableStateOf("") }
     var cibleCle by rememberSaveable { mutableStateOf("DB") }
@@ -179,6 +181,35 @@ private fun EcranSession(vm: SessionViewModel = viewModel()) {
                 }
             }
         }
+        Spacer(Modifier.height(8.dp))
+        Text("Adaptateur Wi-Fi (WiCAN PRO)", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "Téléphone joint au point d'accès du WiCAN (ou même réseau). " +
+                "Défauts du point d'accès WiCAN PRO : 192.168.0.10, port ELM327 35000.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Row {
+            OutlinedTextField(
+                value = hoteWifi,
+                onValueChange = { hoteWifi = it },
+                label = { Text("Hôte") },
+                singleLine = true,
+                modifier = Modifier.weight(2f).padding(end = 4.dp),
+            )
+            OutlinedTextField(
+                value = portWifi,
+                onValueChange = { portWifi = it },
+                label = { Text("Port") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
+                modifier = Modifier.weight(1f).padding(start = 4.dp),
+            )
+        }
+        Button(
+            onClick = { vm.connecterTcp(hoteWifi, portWifi) },
+            enabled = !connecte && state.connectingName == null,
+            modifier = Modifier.padding(top = 4.dp),
+        ) { Text("Connecter en Wi-Fi (TCP)") }
 
         state.capabilities?.let { cap ->
             Spacer(Modifier.height(16.dp))
